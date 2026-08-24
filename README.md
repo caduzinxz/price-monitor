@@ -1,8 +1,8 @@
-# Monitor de Preços — Python + Playwright + Excel
+# Monitor de Preços — Python + Playwright + Supabase
 
 Monitora o preço de um produto de e-commerce periodicamente, guarda o histórico em
-uma planilha Excel e envia um e-mail de alerta quando o preço cai de forma
-significativa.
+uma tabela no Supabase (Postgres) e envia um e-mail de alerta quando o preço cai
+de forma significativa.
 
 ## Instalação
 
@@ -41,13 +41,43 @@ Variáveis:
 | Variável | Descrição |
 |---|---|
 | `PRODUCT_URL` | URL do produto a ser monitorado |
-| `PRODUCT_NAME` | Nome do produto, usado no Excel e no e-mail |
+| `PRODUCT_NAME` | Nome do produto, usado no histórico e no e-mail |
 | `PRICE_SELECTOR` | Seletor CSS do elemento que contém o preço na página |
 | `MIN_PRICE_DROP_PERCENT` | Queda mínima (%) para disparar um alerta |
 | `CHECK_INTERVAL_HOURS` | Intervalo entre verificações, em horas |
 | `EMAIL_HOST` / `EMAIL_PORT` | Servidor SMTP (ex.: `smtp.gmail.com` / `587`) |
 | `EMAIL_USER` / `EMAIL_PASSWORD` | Credenciais de envio |
 | `EMAIL_TO` | Destinatário do alerta |
+| `SUPABASE_URL` | Project URL do Supabase (Project Settings → API) |
+| `SUPABASE_SECRET_KEY` | Chave secreta do Supabase, usada pelo backend para ler/gravar o histórico |
+| `SUPABASE_PUBLISHABLE_KEY` | Chave pública do Supabase (não usada pelo monitor hoje; reservada para uma futura interface/dashboard) |
+
+### Sobre o Supabase
+
+O histórico de preços é armazenado numa tabela `price_history` no Supabase. Antes
+da primeira execução, crie a tabela rodando este SQL uma vez no **SQL Editor** do
+painel do Supabase:
+
+```sql
+create table if not exists price_history (
+  id bigint generated always as identity primary key,
+  data_hora timestamptz not null default now(),
+  produto text not null,
+  url text not null,
+  preco numeric not null,
+  variacao_percent numeric
+);
+
+create index if not exists idx_price_history_produto
+  on price_history (produto, data_hora desc);
+
+alter table price_history enable row level security;
+```
+
+A última linha ativa Row Level Security sem nenhuma política, o que bloqueia a
+chave pública de ler/escrever na tabela — só a chave secreta (usada do lado do
+servidor, nunca exposta) consegue acessar. Nunca coloque `SUPABASE_SECRET_KEY`
+em código versionado ou em qualquer lugar acessível pelo navegador.
 
 ### Sobre o `PRICE_SELECTOR`
 
@@ -80,7 +110,7 @@ python run.py
 ```
 
 O programa roda em loop até ser interrompido com `Ctrl+C` (que é tratado de
-forma limpa, sem travar ou corromper o Excel).
+forma limpa).
 
 ## Funcionamento
 
@@ -93,11 +123,11 @@ abrir o navegador (Playwright) e acessar a URL do produto
         ↓
 extrair e converter o preço (texto → número)
         ↓
-ler o último preço salvo no Excel
+ler o último preço salvo no Supabase
         ↓
 calcular a variação percentual
         ↓
-salvar o novo registro no Excel (sem apagar o histórico)
+salvar o novo registro no Supabase (sem apagar o histórico)
         ↓
 se a queda ≥ MIN_PRICE_DROP_PERCENT → enviar e-mail de alerta
         ↓
@@ -119,19 +149,21 @@ app/
 ├── scraper/price_scraper.py   acessa a página e extrai o preço (Playwright)
 ├── services/price_service.py  calcula variação e decide o alerta
 ├── services/email_service.py  monta e envia o e-mail (SMTP)
-├── storage/excel_storage.py   lê/escreve o histórico no Excel
+├── storage/supabase_storage.py   lê/escreve o histórico no Supabase
+├── storage/excel_storage.py   alternativa em Excel (não usada por padrão, mantida como referência)
 └── utils/helpers.py     conversão de preço texto → número, formatação
 
-data/price_history.xlsx  histórico de preços (criado automaticamente)
 tests/test_price_service.py  testes da lógica de negócio
 run.py                   ponto de entrada (python run.py)
 ```
 
-Cada módulo tem uma responsabilidade única: o scraper não sabe nada sobre Excel
-ou e-mail, o `price_service` não sabe nada sobre navegador, e o `main.py` apenas
-chama essas peças na ordem certa. Isso é o princípio de **separação de
-responsabilidades**: cada arquivo pode ser entendido, testado e trocado
-isoladamente.
+Cada módulo tem uma responsabilidade única: o scraper não sabe nada sobre
+armazenamento ou e-mail, o `price_service` não sabe nada sobre navegador, e o
+`main.py` apenas chama essas peças na ordem certa. Isso é o princípio de
+**separação de responsabilidades**: cada arquivo pode ser entendido, testado e
+trocado isoladamente — trocar `SupabaseStorage` por `ExcelStorage` (ou por
+qualquer outro backend) no `main.py` não exige mudar mais nada, porque os dois
+implementam os mesmos métodos (`get_last_price`, `append_record`).
 
 ## Testes
 
@@ -149,7 +181,7 @@ Conceitos de Python praticados neste projeto:
 - **Módulos e pacotes**: cada pasta com `__init__.py` é um pacote; `import
   app.services.price_service` funciona porque `app`, `app.services` etc. são
   pacotes Python.
-- **Classes e POO**: `PriceScraper`, `ExcelStorage`, `PriceService` e
+- **Classes e POO**: `PriceScraper`, `SupabaseStorage`, `PriceService` e
   `EmailService` encapsulam estado (ex.: credenciais, configurações) e
   comportamento relacionado.
 - **Dataclasses**: `PriceCheckResult` usa `@dataclass` para agrupar dados sem
@@ -162,8 +194,9 @@ Conceitos de Python praticados neste projeto:
 - **Web scraping com Playwright**: `page.wait_for_selector` espera o elemento
   aparecer de forma ativa (em vez de `time.sleep` cego), e o navegador é
   sempre fechado num bloco `finally`, mesmo se algo der errado.
-- **Excel com pandas/openpyxl**: leitura e escrita de `.xlsx` como
-  `DataFrame`, com `pd.concat` para adicionar linhas sem perder as anteriores.
+- **Supabase (Postgres via REST)**: o cliente `supabase-py` fala com o banco
+  por HTTP (PostgREST) em vez de uma conexão SQL direta; `client.table(...).select()/insert()`
+  monta a query e `.execute()` a dispara.
 - **SMTP**: `smtplib` + `email.message.EmailMessage` (bibliotecas padrão) para
   montar e enviar e-mails com STARTTLS.
 - **Logging**: módulo `logging` em vez de `print()`, com timestamp e níveis
@@ -179,8 +212,7 @@ Conceitos de Python praticados neste projeto:
 Não implementados nesta versão, mas possíveis evoluções:
 
 - Monitorar vários produtos ao mesmo tempo (lista de produtos configurável).
-- Trocar o Excel por um banco de dados (SQLite/PostgreSQL).
-- Dashboard web com gráfico da evolução do preço.
+- Dashboard web com gráfico da evolução do preço (consumindo os dados do Supabase).
 - Notificação por Telegram/WhatsApp além do e-mail.
 - Empacotar em Docker e rodar em um servidor.
 - Expor uma API para consultar o histórico.

@@ -1,5 +1,5 @@
 """Orquestra o fluxo completo: acessar o produto, obter o preco, comparar com
-o historico, salvar no Excel e enviar alerta por e-mail quando necessario.
+o historico, salvar no Supabase e enviar alerta por e-mail quando necessario.
 Roda em loop, verificando a cada CHECK_INTERVAL_HOURS, ate ser interrompido
 (Ctrl+C).
 """
@@ -11,13 +11,13 @@ from app.config import settings
 from app.scraper.price_scraper import PriceScraper, PriceScraperError
 from app.services.email_service import EmailService, EmailServiceError
 from app.services.price_service import PriceService
-from app.storage.excel_storage import ExcelStorage
+from app.storage.supabase_storage import SupabaseStorage
 from app.utils.helpers import format_price_brl
 
 logger = logging.getLogger(__name__)
 
 
-def setup_logging() -> None:
+def setup_logging() -> None: 
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s] %(message)s",
@@ -25,7 +25,7 @@ def setup_logging() -> None:
     )
 
 
-def run_check_cycle(scraper: PriceScraper, storage: ExcelStorage,
+def run_check_cycle(scraper: PriceScraper, storage: SupabaseStorage,
                      price_service: PriceService, email_service: EmailService) -> None:
     logger.info("Acessando produto: %s", settings.PRODUCT_NAME)
     current_price = scraper.fetch_price(settings.PRODUCT_URL, settings.PRICE_SELECTOR)
@@ -68,7 +68,7 @@ def main() -> None:
     logger.info("Iniciando monitoramento de precos...")
 
     scraper = PriceScraper()
-    storage = ExcelStorage(settings.EXCEL_PATH)
+    storage = SupabaseStorage(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
     price_service = PriceService(min_drop_percent=settings.MIN_PRICE_DROP_PERCENT)
     email_service = EmailService(
         host=settings.EMAIL_HOST,

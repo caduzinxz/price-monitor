@@ -35,6 +35,11 @@ EMAIL_USER = os.getenv("EMAIL_USER", "")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 EMAIL_TO = os.getenv("EMAIL_TO", "")
 
-# --- Armazenamento -----------------------------------------------------------
+# --- Armazenamento (Excel, mantido como referencia/alternativa) -------------
 DATA_DIR = BASE_DIR / "data"
 EXCEL_PATH = DATA_DIR / "price_history.xlsx"
+
+# --- Armazenamento (Supabase) -------------------------------------------------
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
