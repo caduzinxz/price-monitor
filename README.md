@@ -41,6 +41,7 @@ Variáveis:
 | Variável | Descrição |
 |---|---|
 | `MIN_PRICE_DROP_PERCENT` | Queda mínima (%) para disparar um alerta |
+| `ALERT_ON_HISTORIC_LOW` | `false` desliga o alerta de menor preço histórico |
 | `CHECK_INTERVAL_HOURS` | Intervalo entre verificações, em horas |
 | `DELAY_BETWEEN_PRODUCTS_SECONDS` | Pausa entre um produto e outro dentro do mesmo ciclo |
 | `ALERTS_ENABLED` | `false` desliga o envio de e-mails sem apagar as credenciais |
@@ -50,6 +51,28 @@ Variáveis:
 | `SUPABASE_URL` | Project URL do Supabase (Project Settings → API) |
 | `SUPABASE_SECRET_KEY` | Chave secreta do Supabase, usada pelo backend para ler/gravar o histórico |
 | `SUPABASE_PUBLISHABLE_KEY` | Chave pública do Supabase (não usada pelo monitor hoje; reservada para uma futura interface/dashboard) |
+
+### Quando um alerta é disparado
+
+Existem **duas** condições independentes — qualquer uma delas basta:
+
+1. **Queda percentual**: o preço caiu pelo menos `MIN_PRICE_DROP_PERCENT` desde a
+   última verificação.
+2. **Menor preço histórico**: o preço ficou abaixo de tudo que já foi registrado
+   para aquele produto, mesmo que a queda desde a última verificação tenha sido
+   pequena.
+
+A segunda existe porque um preço que cai de pouco em pouco — 2% por dia durante
+uma semana — nunca cruzaria o limite de 10% numa única verificação, mas acabaria
+no menor valor de todos os tempos sem você ficar sabendo.
+
+Duas decisões de implementação evitam alertas inúteis:
+
+- A primeira verificação de um produto **não** conta como recorde. Sem histórico,
+  qualquer preço seria trivialmente "o menor de todos".
+- Empatar com o recorde **não** conta como recorde novo (a comparação é `<`, não
+  `<=`). Caso contrário, um preço parado no valor mínimo geraria um alerta a cada
+  hora, indefinidamente.
 
 ### Sobre o Supabase
 
@@ -263,7 +286,6 @@ Não implementados nesta versão, mas possíveis evoluções:
 - Notificação por Telegram/WhatsApp além do e-mail.
 - Empacotar em Docker e rodar em um servidor.
 - Expor uma API para consultar o histórico.
-- Detecção automática de "menor preço histórico".
 - Configuração de produtos via arquivo JSON.
 - Interface web para cadastrar produtos e visualizar alertas.
 - Deploy em nuvem (ex.: um cron job em uma VM ou função serverless).

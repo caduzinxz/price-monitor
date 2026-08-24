@@ -58,5 +58,66 @@ class TestPriceService(unittest.TestCase):
         self.assertIsNone(resultado.variation_percent)
 
 
+class TestMenorPrecoHistorico(unittest.TestCase):
+    def setUp(self):
+        self.service = PriceService(min_drop_percent=10)
+
+    def test_detecta_novo_recorde(self):
+        resultado = self.service.evaluate(
+            current_price=900, previous_price=950, historic_min_price=920
+        )
+        self.assertTrue(resultado.is_historic_low)
+
+    def test_preco_acima_do_recorde_nao_e_recorde(self):
+        resultado = self.service.evaluate(
+            current_price=930, previous_price=950, historic_min_price=920
+        )
+        self.assertFalse(resultado.is_historic_low)
+
+    def test_preco_igual_ao_recorde_nao_conta_como_novo_recorde(self):
+        # Evita alertar de hora em hora enquanto o preco fica parado no minimo.
+        resultado = self.service.evaluate(
+            current_price=920, previous_price=950, historic_min_price=920
+        )
+        self.assertFalse(resultado.is_historic_low)
+
+    def test_primeira_verificacao_nao_e_recorde(self):
+        resultado = self.service.evaluate(
+            current_price=1000, previous_price=None, historic_min_price=None
+        )
+        self.assertFalse(resultado.is_historic_low)
+
+    def test_recorde_alerta_mesmo_com_queda_pequena(self):
+        # Queda de apenas 2%, abaixo do limite de 10%, mas e o menor preco ja visto.
+        resultado = self.service.evaluate(
+            current_price=931, previous_price=950, historic_min_price=940
+        )
+        self.assertTrue(resultado.is_historic_low)
+        self.assertTrue(resultado.should_alert)
+        self.assertLess(resultado.variation_percent, 10)
+
+    def test_recorde_nao_alerta_quando_desativado(self):
+        service = PriceService(min_drop_percent=10, alert_on_historic_low=False)
+        resultado = service.evaluate(
+            current_price=931, previous_price=950, historic_min_price=940
+        )
+        self.assertTrue(resultado.is_historic_low)
+        self.assertFalse(resultado.should_alert)
+
+    def test_queda_grande_ainda_alerta_sem_ser_recorde(self):
+        resultado = self.service.evaluate(
+            current_price=850, previous_price=1000, historic_min_price=800
+        )
+        self.assertFalse(resultado.is_historic_low)
+        self.assertTrue(resultado.should_alert)
+
+    def test_preco_que_sobe_nunca_e_recorde(self):
+        resultado = self.service.evaluate(
+            current_price=1100, previous_price=1000, historic_min_price=900
+        )
+        self.assertFalse(resultado.is_historic_low)
+        self.assertFalse(resultado.should_alert)
+
+
 if __name__ == "__main__":
     unittest.main()

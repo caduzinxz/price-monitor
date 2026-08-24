@@ -33,16 +33,32 @@ class EmailService:
         current_price: float,
         variation_percent: float,
         url: str,
+        is_historic_low: bool = False,
+        historic_min_price: float | None = None,
     ) -> None:
-        subject = f"[Alerta de Preco] {product_name} caiu {variation_percent:.2f}%"
-        body = (
-            f"Produto: {product_name}\n"
-            f"Preco anterior: {format_price_brl(previous_price)}\n"
-            f"Preco atual: {format_price_brl(current_price)}\n"
-            f"Queda: {variation_percent:.2f}%\n"
-            f"URL: {url}\n"
-            f"Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
-        )
+        if is_historic_low:
+            subject = f"[MENOR PRECO HISTORICO] {product_name} - {format_price_brl(current_price)}"
+        else:
+            subject = f"[Alerta de Preco] {product_name} caiu {variation_percent:.2f}%"
+
+        linhas = [
+            f"Produto: {product_name}",
+            f"Preco anterior: {format_price_brl(previous_price)}",
+            f"Preco atual: {format_price_brl(current_price)}",
+            f"Queda: {variation_percent:.2f}%",
+        ]
+
+        if is_historic_low:
+            linhas.append("")
+            linhas.append("*** MENOR PRECO JA REGISTRADO PARA ESTE PRODUTO ***")
+            if historic_min_price is not None:
+                linhas.append(f"Recorde anterior: {format_price_brl(historic_min_price)}")
+
+        linhas.append("")
+        linhas.append(f"URL: {url}")
+        linhas.append(f"Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+
+        body = "\n".join(linhas) + "\n"
 
         message = EmailMessage()
         message["Subject"] = subject

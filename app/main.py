@@ -37,14 +37,30 @@ def check_product(product: Product, scraper: PriceScraper, storage: SupabaseStor
     current_price = scraper.fetch_price(product.url, product.price_selector)
     logger.info("[%s] Preco encontrado: %s", product.name, format_price_brl(current_price))
 
+    # Os dois valores sao lidos ANTES de gravar o preco atual: se gravassemos
+    # primeiro, o proprio preco de agora entraria na conta e ele nunca seria
+    # detectado como um recorde.
     previous_price = storage.get_last_price(product.name)
-    result = price_service.evaluate(current_price, previous_price)
+    historic_min_price = storage.get_min_price(product.name)
+    result = price_service.evaluate(current_price, previous_price, historic_min_price)
 
     if previous_price is None:
         logger.info("[%s] Nenhum historico anterior. Registrando preco inicial.", product.name)
     else:
         logger.info("[%s] Preco anterior: %s", product.name, format_price_brl(previous_price))
         logger.info("[%s] Variacao: %.2f%%", product.name, result.variation_percent)
+        if result.is_historic_low:
+            logger.info(
+                "[%s] MENOR PRECO HISTORICO! Recorde anterior: %s",
+                product.name,
+                format_price_brl(historic_min_price),
+            )
+        elif historic_min_price is not None:
+            logger.info(
+                "[%s] Menor preco ja registrado: %s",
+                product.name,
+                format_price_brl(historic_min_price),
+            )
 
     storage.append_record(
         product_name=product.name,
@@ -64,6 +80,8 @@ def check_product(product: Product, scraper: PriceScraper, storage: SupabaseStor
                 current_price=result.current_price,
                 variation_percent=result.variation_percent,
                 url=product.url,
+                is_historic_low=result.is_historic_low,
+                historic_min_price=result.historic_min_price,
             )
         except EmailServiceError as exc:
             logger.error("[%s] Nao foi possivel enviar o alerta: %s", product.name, exc)
@@ -105,7 +123,10 @@ def main() -> None:
 
     scraper = PriceScraper()
     storage = SupabaseStorage(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
-    price_service = PriceService(min_drop_percent=settings.MIN_PRICE_DROP_PERCENT)
+    price_service = PriceService(
+        min_drop_percent=settings.MIN_PRICE_DROP_PERCENT,
+        alert_on_historic_low=settings.ALERT_ON_HISTORIC_LOW,
+    )
     email_service = EmailService(
         host=settings.EMAIL_HOST,
         port=settings.EMAIL_PORT,

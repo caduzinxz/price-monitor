@@ -22,6 +22,14 @@ PRODUCTS_FILE = BASE_DIR / "products.json"
 MIN_PRICE_DROP_PERCENT = float(os.getenv("MIN_PRICE_DROP_PERCENT", "10"))
 CHECK_INTERVAL_HOURS = float(os.getenv("CHECK_INTERVAL_HOURS", "1"))
 
+# Alerta quando o preco atinge o menor valor ja registrado, mesmo que a queda
+# desde a ultima verificacao seja menor que MIN_PRICE_DROP_PERCENT.
+ALERT_ON_HISTORIC_LOW = os.getenv("ALERT_ON_HISTORIC_LOW", "true").strip().lower() not in (
+    "false",
+    "0",
+    "no",
+)
+
 # Pausa entre um produto e outro, para nao disparar varias requisicoes seguidas
 # ao mesmo site (boa pratica de scraping).
 DELAY_BETWEEN_PRODUCTS_SECONDS = float(os.getenv("DELAY_BETWEEN_PRODUCTS_SECONDS", "5"))

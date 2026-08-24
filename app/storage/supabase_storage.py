@@ -27,6 +27,26 @@ class SupabaseStorage:
             return None
         return float(response.data[0]["preco"])
 
+    def get_min_price(self, product_name: str) -> float | None:
+        """Retorna o menor preco ja registrado para o produto, ou None se nao
+        houver historico.
+
+        Ordenar por preco e pegar o primeiro deixa o trabalho com o banco de
+        dados, que faz isso de forma eficiente -- melhor do que baixar todo o
+        historico e calcular o minimo em Python.
+        """
+        response = (
+            self.client.table(TABLE_NAME)
+            .select("preco")
+            .eq("produto", product_name)
+            .order("preco", desc=False)
+            .limit(1)
+            .execute()
+        )
+        if not response.data:
+            return None
+        return float(response.data[0]["preco"])
+
     def append_record(
         self,
         product_name: str,
