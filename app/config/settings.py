@@ -29,6 +29,14 @@ MIN_PRICE_DROP_PERCENT = float(os.getenv("MIN_PRICE_DROP_PERCENT", "10"))
 CHECK_INTERVAL_HOURS = float(os.getenv("CHECK_INTERVAL_HOURS", "1"))
 
 # --- E-mail (SMTP) -----------------------------------------------------------
+# Interruptor para desligar os alertas sem perder as credenciais configuradas.
+# Aceita "false", "0" ou "no" (em qualquer caixa) para desativar.
+ALERTS_ENABLED = os.getenv("ALERTS_ENABLED", "true").strip().lower() not in (
+    "false",
+    "0",
+    "no",
+)
+
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 # .strip() protege contra espacos acidentais no copiar/colar. A App Password do

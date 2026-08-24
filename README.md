@@ -45,6 +45,7 @@ Variáveis:
 | `PRICE_SELECTOR` | Seletor CSS do elemento que contém o preço na página |
 | `MIN_PRICE_DROP_PERCENT` | Queda mínima (%) para disparar um alerta |
 | `CHECK_INTERVAL_HOURS` | Intervalo entre verificações, em horas |
+| `ALERTS_ENABLED` | `false` desliga o envio de e-mails sem apagar as credenciais |
 | `EMAIL_HOST` / `EMAIL_PORT` | Servidor SMTP (ex.: `smtp.gmail.com` / `587`) |
 | `EMAIL_USER` / `EMAIL_PASSWORD` | Credenciais de envio |
 | `EMAIL_TO` | Destinatário do alerta |
@@ -102,6 +103,18 @@ Nunca use a senha pessoal da sua conta Gmail no `.env`. Use uma **App Password**
 1. Ative a verificação em duas etapas na conta Google.
 2. Acesse https://myaccount.google.com/apppasswords
 3. Gere uma senha de app e use-a em `EMAIL_PASSWORD`.
+
+Para testar o envio sem esperar uma queda real de preço:
+
+```bash
+python -m scripts.send_test_email
+```
+
+Para **parar de receber os alertas**, prefira `ALERTS_ENABLED=false` no `.env` ou
+revogue apenas aquela App Password em https://myaccount.google.com/apppasswords —
+as duas opções são reversíveis e cirúrgicas. Desativar a verificação em duas
+etapas da conta Google também revoga a senha, mas enfraquece a segurança de toda
+a sua conta, então não é o caminho recomendado.
 
 ## Execução
 

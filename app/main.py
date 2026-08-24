@@ -51,7 +51,9 @@ def run_check_cycle(scraper: PriceScraper, storage: SupabaseStorage,
         variation_percent=result.variation_percent,
     )
 
-    if result.should_alert:
+    if result.should_alert and not settings.ALERTS_ENABLED:
+        logger.info("Queda significativa identificada, mas os alertas estao desativados.")
+    elif result.should_alert:
         logger.info("Queda significativa identificada. Enviando alerta por e-mail...")
         try:
             email_service.send_price_alert(
