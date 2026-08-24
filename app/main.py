@@ -17,12 +17,16 @@ from app.utils.helpers import format_price_brl
 logger = logging.getLogger(__name__)
 
 
-def setup_logging() -> None: 
+def setup_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+    # As bibliotecas do Supabase logam cada requisicao HTTP em INFO; isso
+    # polui o log do monitor, entao elevamos o nivel so para elas.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("hpack").setLevel(logging.WARNING)
 
 
 def run_check_cycle(scraper: PriceScraper, storage: SupabaseStorage,
