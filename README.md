@@ -3,9 +3,55 @@
 [![tests](https://github.com/caduzinxz/price-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/caduzinxz/price-monitor/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Monitora periodicamente o preço de produtos de e-commerce, guarda o histórico em
-uma tabela no Supabase (Postgres) e envia alerta por **e-mail e Telegram** quando
-o preço cai de forma significativa ou atinge o menor valor já registrado.
+Monitora periodicamente o preço de produtos de e-commerce, guarda o histórico e
+envia alerta por **e-mail e Telegram** quando o preço cai de forma significativa
+ou atinge o menor valor já registrado.
+
+## Rodando em 1 minuto
+
+Sem cadastro, sem credencial, sem banco de dados externo:
+
+```bash
+git clone https://github.com/caduzinxz/price-monitor.git
+cd price-monitor
+pip install -r requirements.txt
+playwright install chromium
+python run.py --demo
+```
+
+O modo `--demo` busca um preço real com Playwright, semeia um histórico e simula
+uma queda para você ver o alerta disparando — tudo em ~20 segundos:
+
+```text
+[1/3] Buscando um preco REAL com o Playwright...
+[A Light in the Attic] Preco encontrado: R$ 51,77
+
+[2/3] Semeando o historico de 'Notebook Gamer (simulado)'...
+      17:30 -> R$ 3.500,00
+      18:30 -> R$ 3.400,00
+      19:30 -> R$ 3.299,00
+
+[3/3] Nova verificacao encontra R$ 2.799,00...
+[Notebook Gamer (simulado)] MENOR PRECO HISTORICO! Recorde anterior: R$ 3.299,00
+================================================================
+  MENOR PRECO HISTORICO: Notebook Gamer (simulado)
+----------------------------------------------------------------
+  Preco anterior : R$ 3.299,00
+  Preco atual    : R$ 2.799,00
+  Queda          : 15.16%
+================================================================
+```
+
+Outros modos:
+
+```bash
+python run.py --once    # uma verificação e encerra
+python run.py           # monitora de hora em hora (Ctrl+C para parar)
+```
+
+Por padrão o histórico vai para um SQLite local (`data/price_history.db`) e os
+alertas aparecem no terminal. E-mail, Telegram e Supabase são opcionais — cada
+um é ativado apenas se você configurar no `.env`.
 
 ## Instalação
 
@@ -43,6 +89,7 @@ Variáveis:
 
 | Variável | Descrição |
 |---|---|
+| `STORAGE_BACKEND` | `sqlite` (padrão, local) ou `supabase` (nuvem) |
 | `MIN_PRICE_DROP_PERCENT` | Queda mínima (%) para disparar um alerta |
 | `ALERT_ON_HISTORIC_LOW` | `false` desliga o alerta de menor preço histórico |
 | `CHECK_INTERVAL_HOURS` | Intervalo entre verificações, em horas |
@@ -79,11 +126,15 @@ Duas decisões de implementação evitam alertas inúteis:
   `<=`). Caso contrário, um preço parado no valor mínimo geraria um alerta a cada
   hora, indefinidamente.
 
-### Sobre o Supabase
+### Armazenamento
 
-O histórico de preços é armazenado numa tabela `price_history` no Supabase. Antes
-da primeira execução, crie a tabela rodando este SQL uma vez no **SQL Editor** do
-painel do Supabase:
+O padrão é **SQLite**: um arquivo em `data/price_history.db`, criado
+automaticamente. Não exige instalação nem configuração — é o que torna possível
+clonar e rodar.
+
+Para usar **Supabase** (Postgres na nuvem), coloque `STORAGE_BACKEND=supabase` no
+`.env`, preencha `SUPABASE_URL` e `SUPABASE_SECRET_KEY`, e crie a tabela rodando
+este SQL uma vez no **SQL Editor** do painel do Supabase:
 
 ```sql
 create table if not exists price_history (
@@ -105,6 +156,10 @@ A última linha ativa Row Level Security sem nenhuma política, o que bloqueia a
 chave pública de ler/escrever na tabela — só a chave secreta (usada do lado do
 servidor, nunca exposta) consegue acessar. Nunca coloque `SUPABASE_SECRET_KEY`
 em código versionado ou em qualquer lugar acessível pelo navegador.
+
+Os dois backends expõem exatamente os mesmos métodos (`get_last_price`,
+`get_min_price`, `append_record`) e levantam o mesmo `StorageError`, então o
+restante do projeto não sabe qual está em uso.
 
 ### Produtos monitorados (`products.json`)
 
@@ -244,7 +299,10 @@ app/
 ├── services/notification_service.py  envia o alerta por todos os canais ativos
 ├── services/email_service.py  monta e envia o e-mail (SMTP)
 ├── services/telegram_service.py  envia a mensagem pelo Telegram
-├── storage/supabase_storage.py   lê/escreve o histórico no Supabase
+├── services/console_service.py  mostra o alerta no terminal (canal de reserva)
+├── storage/sqlite_storage.py   histórico em arquivo local (padrão)
+├── storage/supabase_storage.py   histórico no Supabase (opcional)
+├── demo.py              modo de demonstração (--demo)
 └── utils/helpers.py     conversão de preço texto → número, formatação
 
 products.json            lista de produtos monitorados

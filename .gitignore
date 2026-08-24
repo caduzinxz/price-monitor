@@ -3,5 +3,7 @@ venv/
 __pycache__/
 *.pyc
 .env
-data/price_history.xlsx
+data/
+*.db
 *.log
+.ruff_cache/

@@ -10,11 +10,14 @@ import time
 from app.config import settings
 from app.config.products import Product, ProductConfigError, load_products
 from app.scraper.price_scraper import PriceScraper, PriceScraperError
+from app.services.console_service import ConsoleNotifier
 from app.services.email_service import EmailService
 from app.services.notification_service import NotificationService
 from app.services.price_service import PriceService
 from app.services.telegram_service import TelegramService
-from app.storage.supabase_storage import StorageError, SupabaseStorage
+from app.storage.errors import StorageError
+from app.storage.sqlite_storage import SQLiteStorage
+from app.storage.supabase_storage import SupabaseStorage
 from app.utils.helpers import format_price_brl
 
 logger = logging.getLogger(__name__)
@@ -30,6 +33,26 @@ def setup_logging() -> None:
     # polui o log do monitor, entao elevamos o nivel so para elas.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("hpack").setLevel(logging.WARNING)
+
+
+def build_storage():
+    """Escolhe o backend de armazenamento conforme STORAGE_BACKEND.
+
+    O padrao e SQLite justamente para que o projeto rode sem nenhuma conta ou
+    servico externo; o Supabase e opcional.
+    """
+    if settings.STORAGE_BACKEND == "supabase":
+        logger.info("Armazenamento: Supabase")
+        return SupabaseStorage(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+
+    if settings.STORAGE_BACKEND != "sqlite":
+        raise StorageError(
+            f"STORAGE_BACKEND invalido: {settings.STORAGE_BACKEND!r}. "
+            "Use 'sqlite' ou 'supabase'."
+        )
+
+    logger.info("Armazenamento: SQLite (%s)", settings.SQLITE_PATH.name)
+    return SQLiteStorage(settings.SQLITE_PATH)
 
 
 def build_notification_channels() -> list:
@@ -60,7 +83,12 @@ def build_notification_channels() -> list:
             )
         )
 
-    names = [type(channel).__name__ for channel in channels] or ["nenhum"]
+    # Sem nenhum canal configurado, o alerta ficaria invisivel. O console
+    # garante que ele apareca em algum lugar, sem exigir credencial nenhuma.
+    if not channels:
+        channels.append(ConsoleNotifier())
+
+    names = [type(channel).__name__ for channel in channels]
     logger.info("Canais de notificacao ativos: %s", ", ".join(names))
     return channels
 
@@ -143,7 +171,7 @@ def run_check_cycle(products: list[Product], scraper: PriceScraper, storage: Sup
             time.sleep(settings.DELAY_BETWEEN_PRODUCTS_SECONDS)
 
 
-def main() -> None:
+def main(run_once: bool = False) -> None:
     setup_logging()
     logger.info("Iniciando monitoramento de precos...")
 
@@ -160,7 +188,7 @@ def main() -> None:
     scraper = PriceScraper()
 
     try:
-        storage = SupabaseStorage(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+        storage = build_storage()
     except StorageError as exc:
         # Sem armazenamento nao ha como comparar precos, entao encerramos com
         # uma mensagem clara em vez de falhar so no primeiro ciclo.
@@ -176,6 +204,11 @@ def main() -> None:
     try:
         while True:
             run_check_cycle(products, scraper, storage, price_service, notifier)
+
+            if run_once:
+                logger.info("Ciclo unico concluido (--once). Encerrando.")
+                return
+
             logger.info("Proxima verificacao em %.0f hora(s).", settings.CHECK_INTERVAL_HOURS)
             time.sleep(settings.CHECK_INTERVAL_HOURS * 3600)
     except KeyboardInterrupt:

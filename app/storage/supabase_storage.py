@@ -7,16 +7,9 @@ afetar o resto do codigo.
 
 from supabase import Client, create_client
 
+from app.storage.errors import StorageError
+
 TABLE_NAME = "price_history"
-
-
-class StorageError(Exception):
-    """Falha ao ler ou gravar o historico de precos.
-
-    Existe para que o resto do projeto nao precise conhecer as excecoes
-    especificas do Supabase/PostgREST. Quem chama trata StorageError e pronto;
-    se um dia o banco mudar, so esta classe muda junto.
-    """
 
 
 class SupabaseStorage:

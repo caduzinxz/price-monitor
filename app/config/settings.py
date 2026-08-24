@@ -62,7 +62,14 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 TELEGRAM_CONFIGURED = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
 
-# --- Armazenamento (Supabase) -------------------------------------------------
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
-SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
+# --- Armazenamento -----------------------------------------------------------
+# "sqlite" (padrao) grava num arquivo local e nao exige configuracao nenhuma,
+# entao o projeto funciona logo apos o clone. "supabase" usa o banco na nuvem.
+STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "sqlite").strip().lower()
+
+DATA_DIR = BASE_DIR / "data"
+SQLITE_PATH = DATA_DIR / os.getenv("SQLITE_FILENAME", "price_history.db")
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "").strip()
