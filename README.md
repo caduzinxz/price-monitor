@@ -48,6 +48,8 @@ Variáveis:
 | `EMAIL_HOST` / `EMAIL_PORT` | Servidor SMTP (ex.: `smtp.gmail.com` / `587`) |
 | `EMAIL_USER` / `EMAIL_PASSWORD` | Credenciais de envio |
 | `EMAIL_TO` | Destinatário do alerta |
+| `TELEGRAM_BOT_TOKEN` | Token do bot criado no @BotFather (opcional) |
+| `TELEGRAM_CHAT_ID` | Seu id de conversa no Telegram (opcional) |
 | `SUPABASE_URL` | Project URL do Supabase (Project Settings → API) |
 | `SUPABASE_SECRET_KEY` | Chave secreta do Supabase, usada pelo backend para ler/gravar o histórico |
 | `SUPABASE_PUBLISHABLE_KEY` | Chave pública do Supabase (não usada pelo monitor hoje; reservada para uma futura interface/dashboard) |
@@ -162,8 +164,27 @@ Nunca use a senha pessoal da sua conta Gmail no `.env`. Use uma **App Password**
 Para testar o envio sem esperar uma queda real de preço:
 
 ```bash
-python -m scripts.send_test_email
+python -m scripts.send_test_alert
 ```
+
+### Notificação por Telegram
+
+O Telegram é opcional e independente do e-mail — você pode usar os dois, só um,
+ou nenhum. Um canal só é ativado se estiver totalmente configurado no `.env`.
+
+1. No Telegram, procure **@BotFather** e envie `/newbot`.
+2. Escolha um nome e um usuário para o bot. O BotFather devolve um **token** —
+   cole em `TELEGRAM_BOT_TOKEN` no `.env`.
+3. Abra a conversa com o **seu** bot e mande qualquer mensagem (ex.: "oi"). Esse
+   passo é obrigatório: por segurança, um bot só consegue enviar mensagens para
+   quem já falou com ele primeiro.
+4. Rode `python -m scripts.get_telegram_chat_id` e copie o número exibido para
+   `TELEGRAM_CHAT_ID`.
+5. Teste com `python -m scripts.send_test_alert`.
+
+O token dá controle total do bot para quem o tiver — trate como senha. Ele fica
+no `.env` (que está no `.gitignore`) e nunca aparece em logs, porque no Telegram
+o token faz parte da própria URL da API.
 
 Para **parar de receber os alertas**, prefira `ALERTS_ENABLED=false` no `.env` ou
 revogue apenas aquela App Password em https://myaccount.google.com/apppasswords —
@@ -217,13 +238,16 @@ app/
 ├── config/products.py   carrega e valida a lista de produtos do JSON
 ├── scraper/price_scraper.py   acessa a página e extrai o preço (Playwright)
 ├── services/price_service.py  calcula variação e decide o alerta
+├── services/notification_service.py  envia o alerta por todos os canais ativos
 ├── services/email_service.py  monta e envia o e-mail (SMTP)
+├── services/telegram_service.py  envia a mensagem pelo Telegram
 ├── storage/supabase_storage.py   lê/escreve o histórico no Supabase
 ├── storage/excel_storage.py   alternativa em Excel (não usada por padrão, mantida como referência)
 └── utils/helpers.py     conversão de preço texto → número, formatação
 
 products.json            lista de produtos monitorados
-scripts/send_test_email.py  envia um alerta fictício para testar o SMTP
+scripts/send_test_alert.py  envia um alerta fictício por todos os canais
+scripts/get_telegram_chat_id.py  descobre o seu TELEGRAM_CHAT_ID
 tests/                   testes da lógica de negócio e do carregador de produtos
 run.py                   ponto de entrada (python run.py)
 ```
@@ -283,9 +307,8 @@ Conceitos de Python praticados neste projeto:
 Não implementados nesta versão, mas possíveis evoluções:
 
 - Dashboard web com gráfico da evolução do preço (consumindo os dados do Supabase).
-- Notificação por Telegram/WhatsApp além do e-mail.
+- Notificação por WhatsApp (exige WhatsApp Business API e template aprovado).
 - Empacotar em Docker e rodar em um servidor.
 - Expor uma API para consultar o histórico.
-- Configuração de produtos via arquivo JSON.
 - Interface web para cadastrar produtos e visualizar alertas.
 - Deploy em nuvem (ex.: um cron job em uma VM ou função serverless).

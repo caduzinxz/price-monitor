@@ -9,12 +9,13 @@ import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 
+from app.services.notification_service import NotificationError
 from app.utils.helpers import format_price_brl
 
 logger = logging.getLogger(__name__)
 
 
-class EmailServiceError(Exception):
+class EmailServiceError(NotificationError):
     """Erro ao tentar enviar o e-mail de alerta."""
 
 

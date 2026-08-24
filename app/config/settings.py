@@ -52,6 +52,16 @@ EMAIL_USER = os.getenv("EMAIL_USER", "").strip()
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "").strip()
 EMAIL_TO = os.getenv("EMAIL_TO", "").strip()
 
+# O canal so e ativado se estiver totalmente configurado -- assim nao e preciso
+# um interruptor separado por canal.
+EMAIL_CONFIGURED = bool(EMAIL_USER and EMAIL_PASSWORD and EMAIL_TO)
+
+# --- Telegram -----------------------------------------------------------------
+# O token da uma o controle total do bot: trate como senha (nunca versione).
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_CONFIGURED = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+
 # --- Armazenamento (Excel, mantido como referencia/alternativa) -------------
 DATA_DIR = BASE_DIR / "data"
 EXCEL_PATH = DATA_DIR / "price_history.xlsx"

@@ -10,8 +10,10 @@ import time
 from app.config import settings
 from app.config.products import Product, ProductConfigError, load_products
 from app.scraper.price_scraper import PriceScraper, PriceScraperError
-from app.services.email_service import EmailService, EmailServiceError
+from app.services.email_service import EmailService
+from app.services.notification_service import NotificationService
 from app.services.price_service import PriceService
+from app.services.telegram_service import TelegramService
 from app.storage.supabase_storage import SupabaseStorage
 from app.utils.helpers import format_price_brl
 
@@ -30,8 +32,41 @@ def setup_logging() -> None:
     logging.getLogger("hpack").setLevel(logging.WARNING)
 
 
+def build_notification_channels() -> list:
+    """Monta a lista de canais de acordo com o que esta configurado no .env.
+
+    Um canal so entra na lista se tiver todas as credenciais preenchidas, o
+    que evita tentar enviar (e falhar) por um canal que o usuario nem quis
+    configurar.
+    """
+    channels = []
+
+    if settings.EMAIL_CONFIGURED:
+        channels.append(
+            EmailService(
+                host=settings.EMAIL_HOST,
+                port=settings.EMAIL_PORT,
+                user=settings.EMAIL_USER,
+                password=settings.EMAIL_PASSWORD,
+                to_address=settings.EMAIL_TO,
+            )
+        )
+
+    if settings.TELEGRAM_CONFIGURED:
+        channels.append(
+            TelegramService(
+                bot_token=settings.TELEGRAM_BOT_TOKEN,
+                chat_id=settings.TELEGRAM_CHAT_ID,
+            )
+        )
+
+    nomes = [type(canal).__name__ for canal in channels] or ["nenhum"]
+    logger.info("Canais de notificacao ativos: %s", ", ".join(nomes))
+    return channels
+
+
 def check_product(product: Product, scraper: PriceScraper, storage: SupabaseStorage,
-                  price_service: PriceService, email_service: EmailService) -> None:
+                  price_service: PriceService, notifier: NotificationService) -> None:
     """Executa a verificacao de UM produto."""
     logger.info("[%s] Acessando produto...", product.name)
     current_price = scraper.fetch_price(product.url, product.price_selector)
@@ -72,25 +107,23 @@ def check_product(product: Product, scraper: PriceScraper, storage: SupabaseStor
     if result.should_alert and not settings.ALERTS_ENABLED:
         logger.info("[%s] Queda significativa, mas os alertas estao desativados.", product.name)
     elif result.should_alert:
-        logger.info("[%s] Queda significativa. Enviando alerta por e-mail...", product.name)
-        try:
-            email_service.send_price_alert(
-                product_name=product.name,
-                previous_price=result.previous_price,
-                current_price=result.current_price,
-                variation_percent=result.variation_percent,
-                url=product.url,
-                is_historic_low=result.is_historic_low,
-                historic_min_price=result.historic_min_price,
-            )
-        except EmailServiceError as exc:
-            logger.error("[%s] Nao foi possivel enviar o alerta: %s", product.name, exc)
+        logger.info("[%s] Queda significativa. Enviando alertas...", product.name)
+        # O NotificationService ja trata falha de cada canal individualmente.
+        notifier.send_price_alert(
+            product_name=product.name,
+            previous_price=result.previous_price,
+            current_price=result.current_price,
+            variation_percent=result.variation_percent,
+            url=product.url,
+            is_historic_low=result.is_historic_low,
+            historic_min_price=result.historic_min_price,
+        )
     else:
         logger.info("[%s] Nenhum alerta necessario.", product.name)
 
 
 def run_check_cycle(products: list[Product], scraper: PriceScraper, storage: SupabaseStorage,
-                    price_service: PriceService, email_service: EmailService) -> None:
+                    price_service: PriceService, notifier: NotificationService) -> None:
     """Percorre todos os produtos uma vez.
 
     O try/except fica DENTRO do laco, por produto: assim, se um site estiver
@@ -98,7 +131,7 @@ def run_check_cycle(products: list[Product], scraper: PriceScraper, storage: Sup
     """
     for indice, product in enumerate(products):
         try:
-            check_product(product, scraper, storage, price_service, email_service)
+            check_product(product, scraper, storage, price_service, notifier)
         except PriceScraperError as exc:
             logger.error("[%s] Falha ao obter o preco: %s", product.name, exc)
 
@@ -127,17 +160,11 @@ def main() -> None:
         min_drop_percent=settings.MIN_PRICE_DROP_PERCENT,
         alert_on_historic_low=settings.ALERT_ON_HISTORIC_LOW,
     )
-    email_service = EmailService(
-        host=settings.EMAIL_HOST,
-        port=settings.EMAIL_PORT,
-        user=settings.EMAIL_USER,
-        password=settings.EMAIL_PASSWORD,
-        to_address=settings.EMAIL_TO,
-    )
+    notifier = NotificationService(build_notification_channels())
 
     try:
         while True:
-            run_check_cycle(products, scraper, storage, price_service, email_service)
+            run_check_cycle(products, scraper, storage, price_service, notifier)
             logger.info("Proxima verificacao em %.0f hora(s).", settings.CHECK_INTERVAL_HOURS)
             time.sleep(settings.CHECK_INTERVAL_HOURS * 3600)
     except KeyboardInterrupt:
