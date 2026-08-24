@@ -31,9 +31,12 @@ CHECK_INTERVAL_HOURS = float(os.getenv("CHECK_INTERVAL_HOURS", "1"))
 # --- E-mail (SMTP) -----------------------------------------------------------
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USER = os.getenv("EMAIL_USER", "")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
-EMAIL_TO = os.getenv("EMAIL_TO", "")
+# .strip() protege contra espacos acidentais no copiar/colar. A App Password do
+# Gmail e exibida em blocos ("abcd efgh ijkl mnop") e funciona com ou sem eles,
+# mas um espaco sobrando no inicio/fim causaria uma falha de login confusa.
+EMAIL_USER = os.getenv("EMAIL_USER", "").strip()
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "").strip()
+EMAIL_TO = os.getenv("EMAIL_TO", "").strip()
 
 # --- Armazenamento (Excel, mantido como referencia/alternativa) -------------
 DATA_DIR = BASE_DIR / "data"
