@@ -42,7 +42,7 @@ class EmailService:
         else:
             subject = f"[Alerta de Preco] {product_name} caiu {variation_percent:.2f}%"
 
-        linhas = [
+        lines = [
             f"Produto: {product_name}",
             f"Preco anterior: {format_price_brl(previous_price)}",
             f"Preco atual: {format_price_brl(current_price)}",
@@ -50,16 +50,16 @@ class EmailService:
         ]
 
         if is_historic_low:
-            linhas.append("")
-            linhas.append("*** MENOR PRECO JA REGISTRADO PARA ESTE PRODUTO ***")
+            lines.append("")
+            lines.append("*** MENOR PRECO JA REGISTRADO PARA ESTE PRODUTO ***")
             if historic_min_price is not None:
-                linhas.append(f"Recorde anterior: {format_price_brl(historic_min_price)}")
+                lines.append(f"Recorde anterior: {format_price_brl(historic_min_price)}")
 
-        linhas.append("")
-        linhas.append(f"URL: {url}")
-        linhas.append(f"Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        lines.append("")
+        lines.append(f"URL: {url}")
+        lines.append(f"Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
-        body = "\n".join(linhas) + "\n"
+        body = "\n".join(lines) + "\n"
 
         message = EmailMessage()
         message["Subject"] = subject

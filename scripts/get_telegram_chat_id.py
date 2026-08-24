@@ -30,8 +30,8 @@ def main() -> None:
     endpoint = f"{API_BASE}/bot{settings.TELEGRAM_BOT_TOKEN}/getUpdates"
 
     try:
-        with urllib.request.urlopen(endpoint, timeout=30) as resposta:
-            dados = json.loads(resposta.read().decode("utf-8"))
+        with urllib.request.urlopen(endpoint, timeout=30) as response:
+            data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         # Nao imprimimos a URL porque ela contem o token do bot.
         logger.error("A API do Telegram respondeu HTTP %s. O token esta correto?", exc.code)
@@ -40,24 +40,24 @@ def main() -> None:
         logger.error("Nao foi possivel alcancar a API do Telegram: %s", exc.reason)
         return
 
-    mensagens = dados.get("result", [])
-    if not mensagens:
+    updates = data.get("result", [])
+    if not updates:
         logger.error(
             "Nenhuma mensagem encontrada. Abra o Telegram, procure o seu bot, "
             "mande qualquer mensagem para ele e rode este script de novo."
         )
         return
 
-    encontrados = {}
-    for atualizacao in mensagens:
-        mensagem = atualizacao.get("message") or atualizacao.get("edited_message") or {}
-        chat = mensagem.get("chat") or {}
+    found_chats = {}
+    for update in updates:
+        message = update.get("message") or update.get("edited_message") or {}
+        chat = message.get("chat") or {}
         if "id" in chat:
-            nome = chat.get("first_name") or chat.get("title") or "sem nome"
-            encontrados[chat["id"]] = nome
+            chat_name = chat.get("first_name") or chat.get("title") or "sem nome"
+            found_chats[chat["id"]] = chat_name
 
-    for chat_id, nome in encontrados.items():
-        logger.info("Encontrado: %s -> TELEGRAM_CHAT_ID=%s", nome, chat_id)
+    for chat_id, chat_name in found_chats.items():
+        logger.info("Encontrado: %s -> TELEGRAM_CHAT_ID=%s", chat_name, chat_id)
 
     logger.info("Copie o valor acima para TELEGRAM_CHAT_ID no seu .env.")
 

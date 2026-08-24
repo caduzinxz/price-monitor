@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Roda em duas versoes para garantir que o projeto nao depende de um
+      # detalhe especifico de uma delas.
+      matrix:
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Verificar estilo e erros (ruff)
+        run: ruff check .
+
+      - name: Rodar os testes
+        # Os testes nao acessam rede, navegador nem banco: usam dublês.
+        run: python -m unittest discover tests -v

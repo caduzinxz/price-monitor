@@ -47,29 +47,29 @@ def load_products(file_path: Path) -> list[Product]:
         )
 
     try:
-        dados = json.loads(file_path.read_text(encoding="utf-8"))
+        raw_data = json.loads(file_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ProductConfigError(f"JSON invalido em {file_path.name}: {exc}") from exc
 
-    if not isinstance(dados, list):
+    if not isinstance(raw_data, list):
         raise ProductConfigError(
             f"{file_path.name} deve conter uma lista de produtos (comecando com '[')."
         )
-    if not dados:
+    if not raw_data:
         raise ProductConfigError(f"{file_path.name} nao tem nenhum produto cadastrado.")
 
-    produtos = []
-    for indice, item in enumerate(dados, start=1):
+    products = []
+    for position, item in enumerate(raw_data, start=1):
         if not isinstance(item, dict):
-            raise ProductConfigError(f"O produto #{indice} deveria ser um objeto JSON.")
+            raise ProductConfigError(f"O produto #{position} deveria ser um objeto JSON.")
 
-        faltando = [campo for campo in REQUIRED_FIELDS if not str(item.get(campo, "")).strip()]
-        if faltando:
+        missing = [field for field in REQUIRED_FIELDS if not str(item.get(field, "")).strip()]
+        if missing:
             raise ProductConfigError(
-                f"O produto #{indice} esta sem o(s) campo(s): {', '.join(faltando)}."
+                f"O produto #{position} esta sem o(s) campo(s): {', '.join(missing)}."
             )
 
-        produtos.append(
+        products.append(
             Product(
                 name=item["name"].strip(),
                 url=item["url"].strip(),
@@ -77,15 +77,15 @@ def load_products(file_path: Path) -> list[Product]:
             )
         )
 
-    nomes = [produto.name for produto in produtos]
-    duplicados = {nome for nome in nomes if nomes.count(nome) > 1}
-    if duplicados:
+    names = [product.name for product in products]
+    duplicates = {name for name in names if names.count(name) > 1}
+    if duplicates:
         # Nomes duplicados quebrariam o historico: o Supabase guarda os precos
         # por nome de produto, entao dois produtos com o mesmo nome misturariam
         # seus historicos e gerariam variacoes sem sentido.
         raise ProductConfigError(
-            f"Ha produtos com nomes repetidos: {', '.join(sorted(duplicados))}. "
+            f"Ha produtos com nomes repetidos: {', '.join(sorted(duplicates))}. "
             "Cada produto precisa de um nome unico."
         )
 
-    return produtos
+    return products

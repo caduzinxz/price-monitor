@@ -1,8 +1,8 @@
 """Responsavel por persistir o historico de precos no Supabase (Postgres).
 
-Mesma interface publica do ExcelStorage (get_last_price, append_record), para
-que o main.py nao precise saber qual backend de armazenamento esta sendo
-usado -- apenas troca-se a classe instanciada.
+Nenhuma outra parte do projeto fala com o banco diretamente: tudo passa por
+esta classe, para que a forma de armazenamento possa ser trocada no futuro sem
+afetar o resto do codigo.
 """
 
 from supabase import Client, create_client
@@ -10,38 +10,56 @@ from supabase import Client, create_client
 TABLE_NAME = "price_history"
 
 
+class StorageError(Exception):
+    """Falha ao ler ou gravar o historico de precos.
+
+    Existe para que o resto do projeto nao precise conhecer as excecoes
+    especificas do Supabase/PostgREST. Quem chama trata StorageError e pronto;
+    se um dia o banco mudar, so esta classe muda junto.
+    """
+
+
 class SupabaseStorage:
     def __init__(self, url: str, secret_key: str):
-        self.client: Client = create_client(url, secret_key)
+        if not url or not secret_key:
+            raise StorageError(
+                "SUPABASE_URL e SUPABASE_SECRET_KEY precisam estar preenchidos no .env."
+            )
+        try:
+            self.client: Client = create_client(url, secret_key)
+        except Exception as exc:
+            raise StorageError(f"Nao foi possivel conectar ao Supabase: {exc}") from exc
 
     def get_last_price(self, product_name: str) -> float | None:
-        response = (
-            self.client.table(TABLE_NAME)
+        """Retorna o ultimo preco registrado, ou None se nao houver historico."""
+        response = self._execute(
+            lambda: self.client.table(TABLE_NAME)
             .select("preco")
             .eq("produto", product_name)
             .order("data_hora", desc=True)
             .limit(1)
-            .execute()
+            .execute(),
+            acao=f"ler o ultimo preco de {product_name!r}",
         )
         if not response.data:
             return None
         return float(response.data[0]["preco"])
 
     def get_min_price(self, product_name: str) -> float | None:
-        """Retorna o menor preco ja registrado para o produto, ou None se nao
-        houver historico.
+        """Retorna o menor preco ja registrado, ou None se nao houver historico.
 
-        Ordenar por preco e pegar o primeiro deixa o trabalho com o banco de
-        dados, que faz isso de forma eficiente -- melhor do que baixar todo o
-        historico e calcular o minimo em Python.
+        Ordenar por preco e pegar o primeiro deixa o trabalho com o banco, que
+        faz isso de forma eficiente -- melhor do que baixar todo o historico e
+        calcular o minimo em Python.
         """
-        response = (
-            self.client.table(TABLE_NAME)
+        response = self._execute(
+            lambda: self.client.table(TABLE_NAME)
             .select("preco")
             .eq("produto", product_name)
             .order("preco", desc=False)
             .limit(1)
-            .execute()
+            .execute(),
+            acao=f"ler o menor preco de {product_name!r}",
         )
         if not response.data:
             return None
@@ -54,11 +72,31 @@ class SupabaseStorage:
         price: float,
         variation_percent: float | None,
     ) -> None:
-        self.client.table(TABLE_NAME).insert(
-            {
-                "produto": product_name,
-                "url": url,
-                "preco": price,
-                "variacao_percent": variation_percent,
-            }
-        ).execute()
+        """Adiciona um novo registro, preservando os anteriores."""
+        self._execute(
+            lambda: self.client.table(TABLE_NAME)
+            .insert(
+                {
+                    "produto": product_name,
+                    "url": url,
+                    "preco": price,
+                    "variacao_percent": variation_percent,
+                }
+            )
+            .execute(),
+            acao=f"gravar o preco de {product_name!r}",
+        )
+
+    @staticmethod
+    def _execute(operacao, acao: str):
+        """Executa uma operacao no banco convertendo qualquer falha em StorageError.
+
+        O `except Exception` amplo e intencional aqui: esta e a fronteira com um
+        servico externo, e as falhas possiveis sao muitas (erro da API, DNS,
+        timeout, conexao recusada). O que importa para quem chama e apenas que
+        a operacao falhou -- e o programa precisa sobreviver a isso, nao morrer.
+        """
+        try:
+            return operacao()
+        except Exception as exc:
+            raise StorageError(f"Falha ao {acao}: {exc}") from exc

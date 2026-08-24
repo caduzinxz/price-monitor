@@ -15,31 +15,33 @@ def parse_price(raw_price: str) -> float:
     if raw_price is None:
         raise ValueError("Preco vazio: nao foi possivel converter.")
 
-    limpo = re.sub(r"[^0-9.,]", "", raw_price).strip()
-    if not limpo:
+    cleaned = re.sub(r"[^0-9.,]", "", raw_price).strip()
+    if not cleaned:
         raise ValueError(f"Preco em formato inesperado: {raw_price!r}")
 
-    tem_ponto = "." in limpo
-    tem_virgula = "," in limpo
+    has_dot = "." in cleaned
+    has_comma = "," in cleaned
 
-    if tem_ponto and tem_virgula:
-        se_decimal_e_virgula = limpo.rfind(",") > limpo.rfind(".")
-        if se_decimal_e_virgula:
-            limpo = limpo.replace(".", "").replace(",", ".")
+    if has_dot and has_comma:
+        comma_is_decimal = cleaned.rfind(",") > cleaned.rfind(".")
+        if comma_is_decimal:
+            cleaned = cleaned.replace(".", "").replace(",", ".")
         else:
-            limpo = limpo.replace(",", "")
-    elif tem_virgula:
-        limpo = limpo.replace(",", ".")
+            cleaned = cleaned.replace(",", "")
+    elif has_comma:
+        cleaned = cleaned.replace(",", ".")
     # se so tem ponto (ou nenhum separador), ja esta no formato que float() entende
 
     try:
-        return round(float(limpo), 2)
+        return round(float(cleaned), 2)
     except ValueError as exc:
         raise ValueError(f"Preco em formato inesperado: {raw_price!r}") from exc
 
 
-def format_price_brl(valor: float) -> str:
+def format_price_brl(value: float) -> str:
     """Formata um float como preco em reais: 1299.9 -> 'R$ 1.299,90'."""
-    texto = f"{valor:,.2f}"
-    texto = texto.replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"R$ {texto}"
+    text = f"{value:,.2f}"
+    # Troca os separadores para o padrao brasileiro, usando "X" como marcador
+    # temporario para nao sobrescrever o que acabou de ser trocado.
+    text = text.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {text}"

@@ -62,10 +62,6 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 TELEGRAM_CONFIGURED = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
 
-# --- Armazenamento (Excel, mantido como referencia/alternativa) -------------
-DATA_DIR = BASE_DIR / "data"
-EXCEL_PATH = DATA_DIR / "price_history.xlsx"
-
 # --- Armazenamento (Supabase) -------------------------------------------------
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")

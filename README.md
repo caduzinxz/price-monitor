@@ -1,8 +1,11 @@
 # Monitor de Preços — Python + Playwright + Supabase
 
-Monitora o preço de um produto de e-commerce periodicamente, guarda o histórico em
-uma tabela no Supabase (Postgres) e envia um e-mail de alerta quando o preço cai
-de forma significativa.
+[![tests](https://github.com/caduzinxz/price-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/caduzinxz/price-monitor/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Monitora periodicamente o preço de produtos de e-commerce, guarda o histórico em
+uma tabela no Supabase (Postgres) e envia alerta por **e-mail e Telegram** quando
+o preço cai de forma significativa ou atinge o menor valor já registrado.
 
 ## Instalação
 
@@ -242,7 +245,6 @@ app/
 ├── services/email_service.py  monta e envia o e-mail (SMTP)
 ├── services/telegram_service.py  envia a mensagem pelo Telegram
 ├── storage/supabase_storage.py   lê/escreve o histórico no Supabase
-├── storage/excel_storage.py   alternativa em Excel (não usada por padrão, mantida como referência)
 └── utils/helpers.py     conversão de preço texto → número, formatação
 
 products.json            lista de produtos monitorados
@@ -266,8 +268,22 @@ implementam os mesmos métodos (`get_last_price`, `append_record`).
 python -m unittest discover tests
 ```
 
-Cobrem apenas lógica pura (cálculo de variação, regra de alerta, conversão de
-preço) — não abrem navegador nem enviam e-mail de verdade.
+São 40 testes que rodam em menos de um segundo, porque nenhum deles acessa rede,
+navegador ou banco — as dependências externas são substituídas por dublês.
+Cobrem cálculo de variação, regra de alerta, menor preço histórico, conversão de
+preço, carregamento do JSON de produtos, envio por múltiplos canais e
+**resiliência** (o ciclo precisa sobreviver a um site fora do ar ou ao banco
+indisponível).
+
+Rodam automaticamente a cada push, em Python 3.11 e 3.13, junto com o linter
+(`ruff`) — veja [.github/workflows/tests.yml](.github/workflows/tests.yml).
+
+Para checar o estilo localmente:
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+```
 
 ## Aprendizado
 
@@ -292,6 +308,14 @@ Conceitos de Python praticados neste projeto:
 - **Supabase (Postgres via REST)**: o cliente `supabase-py` fala com o banco
   por HTTP (PostgREST) em vez de uma conexão SQL direta; `client.table(...).select()/insert()`
   monta a query e `.execute()` a dispara.
+- **Exceções por camada**: cada camada traduz as falhas das suas dependências
+  para uma exceção própria (`StorageError`, `PriceScraperError`,
+  `NotificationError`). O `main.py` trata essas três e nunca precisa conhecer
+  `postgrest`, `playwright` ou `smtplib` — trocar qualquer uma dessas
+  bibliotecas não afeta quem chama.
+- **Testes com dublês**: as classes `FakeScraper`/`FakeStorage` substituem
+  serviços reais nos testes, permitindo simular um banco fora do ar sem
+  derrubar banco nenhum.
 - **SMTP**: `smtplib` + `email.message.EmailMessage` (bibliotecas padrão) para
   montar e enviar e-mails com STARTTLS.
 - **Logging**: módulo `logging` em vez de `print()`, com timestamp e níveis

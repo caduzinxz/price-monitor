@@ -72,13 +72,13 @@ class PriceService:
             )
 
         variation = self.calculate_variation_percent(previous_price, current_price)
-        recorde = self.is_historic_low(current_price, historic_min_price)
+        historic_low = self.is_historic_low(current_price, historic_min_price)
 
         # Um recorde de menor preco e noticia mesmo que a queda desde a ultima
         # verificacao tenha sido pequena -- por isso as duas condicoes sao
         # independentes e qualquer uma delas basta para alertar.
-        deve_alertar = self.reached_drop_threshold(variation) or (
-            recorde and self.alert_on_historic_low
+        must_alert = self.reached_drop_threshold(variation) or (
+            historic_low and self.alert_on_historic_low
         )
 
         return PriceCheckResult(
@@ -86,6 +86,6 @@ class PriceService:
             previous_price=previous_price,
             variation_percent=variation,
             historic_min_price=historic_min_price,
-            is_historic_low=recorde,
-            should_alert=deve_alertar,
+            is_historic_low=historic_low,
+            should_alert=must_alert,
         )

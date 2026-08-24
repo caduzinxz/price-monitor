@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # erros de estilo (pycodestyle)
+    "F",   # erros reais detectados pelo pyflakes (variavel nao usada, import morto)
+    "I",   # ordenacao de imports (isort)
+    "UP",  # sintaxe antiga que ja tem forma moderna (pyupgrade)
+    "B",   # armadilhas comuns (flake8-bugbear)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Os dublês de teste recebem argumentos que nao usam, de proposito.
+"tests/*" = ["B008"]

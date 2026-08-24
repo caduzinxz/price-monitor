@@ -14,7 +14,7 @@ from app.services.email_service import EmailService
 from app.services.notification_service import NotificationService
 from app.services.price_service import PriceService
 from app.services.telegram_service import TelegramService
-from app.storage.supabase_storage import SupabaseStorage
+from app.storage.supabase_storage import StorageError, SupabaseStorage
 from app.utils.helpers import format_price_brl
 
 logger = logging.getLogger(__name__)
@@ -60,8 +60,8 @@ def build_notification_channels() -> list:
             )
         )
 
-    nomes = [type(canal).__name__ for canal in channels] or ["nenhum"]
-    logger.info("Canais de notificacao ativos: %s", ", ".join(nomes))
+    names = [type(channel).__name__ for channel in channels] or ["nenhum"]
+    logger.info("Canais de notificacao ativos: %s", ", ".join(names))
     return channels
 
 
@@ -127,16 +127,19 @@ def run_check_cycle(products: list[Product], scraper: PriceScraper, storage: Sup
     """Percorre todos os produtos uma vez.
 
     O try/except fica DENTRO do laco, por produto: assim, se um site estiver
-    fora do ar, os demais produtos continuam sendo verificados normalmente.
+    fora do ar (ou o banco falhar num momento ruim), os demais produtos
+    continuam sendo verificados e o monitor sobrevive ate o proximo ciclo.
     """
-    for indice, product in enumerate(products):
+    for index, product in enumerate(products):
         try:
             check_product(product, scraper, storage, price_service, notifier)
         except PriceScraperError as exc:
             logger.error("[%s] Falha ao obter o preco: %s", product.name, exc)
+        except StorageError as exc:
+            logger.error("[%s] Falha no armazenamento: %s", product.name, exc)
 
-        e_o_ultimo = indice == len(products) - 1
-        if not e_o_ultimo:
+        is_last = index == len(products) - 1
+        if not is_last:
             time.sleep(settings.DELAY_BETWEEN_PRODUCTS_SECONDS)
 
 
@@ -155,7 +158,15 @@ def main() -> None:
     logger.info("%d produto(s) carregado(s) de %s", len(products), settings.PRODUCTS_FILE.name)
 
     scraper = PriceScraper()
-    storage = SupabaseStorage(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+
+    try:
+        storage = SupabaseStorage(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+    except StorageError as exc:
+        # Sem armazenamento nao ha como comparar precos, entao encerramos com
+        # uma mensagem clara em vez de falhar so no primeiro ciclo.
+        logger.error("Nao foi possivel iniciar o armazenamento: %s", exc)
+        return
+
     price_service = PriceService(
         min_drop_percent=settings.MIN_PRICE_DROP_PERCENT,
         alert_on_historic_low=settings.ALERT_ON_HISTORIC_LOW,

@@ -39,8 +39,8 @@ class NotificationService:
             return
 
         for channel in self.channels:
-            nome_do_canal = type(channel).__name__
+            channel_name = type(channel).__name__
             try:
                 channel.send_price_alert(**kwargs)
             except NotificationError as exc:
-                logger.error("Falha ao notificar via %s: %s", nome_do_canal, exc)
+                logger.error("Falha ao notificar via %s: %s", channel_name, exc)

@@ -38,12 +38,12 @@ class TelegramService:
         historic_min_price: float | None = None,
     ) -> None:
         if is_historic_low:
-            titulo = f"🔥 MENOR PREÇO HISTÓRICO: {product_name}"
+            title = f"🔥 MENOR PREÇO HISTÓRICO: {product_name}"
         else:
-            titulo = f"📉 Queda de preço: {product_name}"
+            title = f"📉 Queda de preço: {product_name}"
 
-        linhas = [
-            titulo,
+        lines = [
+            title,
             "",
             f"Preço anterior: {format_price_brl(previous_price)}",
             f"Preço atual: {format_price_brl(current_price)}",
@@ -51,50 +51,50 @@ class TelegramService:
         ]
 
         if is_historic_low and historic_min_price is not None:
-            linhas.append(f"Recorde anterior: {format_price_brl(historic_min_price)}")
+            lines.append(f"Recorde anterior: {format_price_brl(historic_min_price)}")
 
-        linhas.append("")
-        linhas.append(url)
+        lines.append("")
+        lines.append(url)
 
-        self._enviar_mensagem("\n".join(linhas))
+        self._send_message("\n".join(lines))
         logger.info("Alerta enviado por Telegram.")
 
-    def _enviar_mensagem(self, texto: str) -> None:
+    def _send_message(self, text: str) -> None:
         # O token faz parte da URL, entao a URL NUNCA deve aparecer em log ou
         # mensagem de erro -- quem tiver o token controla o bot por completo.
         endpoint = f"{API_BASE}/bot{self.bot_token}/sendMessage"
-        corpo = json.dumps({"chat_id": self.chat_id, "text": texto}).encode("utf-8")
+        payload = json.dumps({"chat_id": self.chat_id, "text": text}).encode("utf-8")
 
-        requisicao = urllib.request.Request(
+        request = urllib.request.Request(
             endpoint,
-            data=corpo,
+            data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
 
         try:
-            with urllib.request.urlopen(requisicao, timeout=self.timeout) as resposta:
-                dados = json.loads(resposta.read().decode("utf-8"))
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            detalhe = self._extrair_descricao_do_erro(exc)
-            raise TelegramServiceError(f"HTTP {exc.code} da API do Telegram: {detalhe}") from exc
+            detail = self._extract_error_description(exc)
+            raise TelegramServiceError(f"HTTP {exc.code} da API do Telegram: {detail}") from exc
         except urllib.error.URLError as exc:
             raise TelegramServiceError(f"Nao foi possivel alcancar a API: {exc.reason}") from exc
         except json.JSONDecodeError as exc:
             raise TelegramServiceError("Resposta da API do Telegram nao era JSON.") from exc
 
-        if not dados.get("ok"):
-            raise TelegramServiceError(f"API recusou o envio: {dados.get('description')}")
+        if not data.get("ok"):
+            raise TelegramServiceError(f"API recusou o envio: {data.get('description')}")
 
     @staticmethod
-    def _extrair_descricao_do_erro(exc: urllib.error.HTTPError) -> str:
+    def _extract_error_description(exc: urllib.error.HTTPError) -> str:
         """Le o corpo do erro para dar uma mensagem util.
 
         A API do Telegram explica a causa no corpo da resposta (ex.: "chat not
         found"), o que ajuda muito mais que apenas o codigo HTTP.
         """
         try:
-            corpo = json.loads(exc.read().decode("utf-8", errors="replace"))
-            return corpo.get("description", "sem detalhes")
+            body = json.loads(exc.read().decode("utf-8", errors="replace"))
+            return body.get("description", "sem detalhes")
         except (json.JSONDecodeError, OSError):
             return "sem detalhes"
