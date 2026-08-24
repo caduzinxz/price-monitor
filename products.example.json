@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Nome do produto (precisa ser unico)",
+    "url": "https://exemplo.com/produto",
+    "price_selector": "span.preco"
+  }
+]

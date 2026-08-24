@@ -13,20 +13,18 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-# --- Produto monitorado -----------------------------------------------------
-PRODUCT_URL = os.getenv(
-    "PRODUCT_URL",
-    "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
-)
-PRODUCT_NAME = os.getenv("PRODUCT_NAME", "Produto de exemplo")
-
-# Seletor CSS do elemento que contem o preco na pagina do produto.
-# Precisa ser ajustado de acordo com o site monitorado (ver README).
-PRICE_SELECTOR = os.getenv("PRICE_SELECTOR", "p.price_color")
+# --- Produtos monitorados ----------------------------------------------------
+# A lista de produtos fica num JSON (e nao no .env) porque o .env so representa
+# valores simples. Ver app/config/products.py.
+PRODUCTS_FILE = BASE_DIR / "products.json"
 
 # --- Regras de monitoramento -------------------------------------------------
 MIN_PRICE_DROP_PERCENT = float(os.getenv("MIN_PRICE_DROP_PERCENT", "10"))
 CHECK_INTERVAL_HOURS = float(os.getenv("CHECK_INTERVAL_HOURS", "1"))
+
+# Pausa entre um produto e outro, para nao disparar varias requisicoes seguidas
+# ao mesmo site (boa pratica de scraping).
+DELAY_BETWEEN_PRODUCTS_SECONDS = float(os.getenv("DELAY_BETWEEN_PRODUCTS_SECONDS", "5"))
 
 # --- E-mail (SMTP) -----------------------------------------------------------
 # Interruptor para desligar os alertas sem perder as credenciais configuradas.

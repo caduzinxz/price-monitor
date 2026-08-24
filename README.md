@@ -40,11 +40,9 @@ Variáveis:
 
 | Variável | Descrição |
 |---|---|
-| `PRODUCT_URL` | URL do produto a ser monitorado |
-| `PRODUCT_NAME` | Nome do produto, usado no histórico e no e-mail |
-| `PRICE_SELECTOR` | Seletor CSS do elemento que contém o preço na página |
 | `MIN_PRICE_DROP_PERCENT` | Queda mínima (%) para disparar um alerta |
 | `CHECK_INTERVAL_HOURS` | Intervalo entre verificações, em horas |
+| `DELAY_BETWEEN_PRODUCTS_SECONDS` | Pausa entre um produto e outro dentro do mesmo ciclo |
 | `ALERTS_ENABLED` | `false` desliga o envio de e-mails sem apagar as credenciais |
 | `EMAIL_HOST` / `EMAIL_PORT` | Servidor SMTP (ex.: `smtp.gmail.com` / `587`) |
 | `EMAIL_USER` / `EMAIL_PASSWORD` | Credenciais de envio |
@@ -80,17 +78,51 @@ chave pública de ler/escrever na tabela — só a chave secreta (usada do lado 
 servidor, nunca exposta) consegue acessar. Nunca coloque `SUPABASE_SECRET_KEY`
 em código versionado ou em qualquer lugar acessível pelo navegador.
 
-### Sobre o `PRICE_SELECTOR`
+### Produtos monitorados (`products.json`)
+
+Os produtos ficam em `products.json`, na raiz do projeto — e não no `.env`, que
+fica reservado a credenciais. O arquivo é uma lista, então monitorar vários
+produtos é só acrescentar blocos:
+
+```json
+[
+  {
+    "name": "A Light in the Attic",
+    "url": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+    "price_selector": "p.price_color"
+  },
+  {
+    "name": "Outro produto",
+    "url": "https://loja.com/produto",
+    "price_selector": "span.preco-final"
+  }
+]
+```
+
+Regras:
+
+- os três campos (`name`, `url`, `price_selector`) são obrigatórios;
+- **`name` precisa ser único** — o histórico é guardado por nome, então nomes
+  repetidos misturariam os preços de produtos diferentes;
+- erros no arquivo (JSON inválido, campo faltando, nome repetido) são detectados
+  na inicialização, com mensagem explicando o que corrigir.
+
+Dentro de um ciclo, os produtos são verificados um de cada vez, com uma pausa
+entre eles (`DELAY_BETWEEN_PRODUCTS_SECONDS`) para não disparar várias
+requisições seguidas ao mesmo site. Se um produto falhar (site fora do ar, por
+exemplo), os demais continuam sendo verificados normalmente.
+
+### Sobre o `price_selector`
 
 Cada site organiza o HTML de um jeito diferente, então **não existe seletor
-universal**. O valor padrão (`p.price_color`) funciona no site de demonstração
-(`books.toscrape.com`, feito justamente para prática de scraping). Para monitorar
-um site real (Mercado Livre, Amazon etc.):
+universal**. O valor usado no exemplo (`p.price_color`) funciona no site de
+demonstração (`books.toscrape.com`, feito justamente para prática de scraping).
+Para monitorar um site real (Mercado Livre, Amazon etc.):
 
 1. Abra a página do produto no navegador.
 2. Clique com o botão direito sobre o preço → "Inspecionar".
 3. Identifique uma classe ou seletor CSS estável que aponte para o preço.
-4. Atualize `PRICE_SELECTOR` no `.env`.
+4. Use-o no campo `price_selector` daquele produto em `products.json`.
 
 Sites reais mudam a estrutura com frequência e podem bloquear automações — respeite
 sempre os termos de uso e o `robots.txt` do site escolhido, e evite verificações
@@ -159,6 +191,7 @@ trava por causa de um erro pontual.
 app/
 ├── main.py              orquestra o fluxo completo
 ├── config/settings.py   configurações centralizadas (lê o .env)
+├── config/products.py   carrega e valida a lista de produtos do JSON
 ├── scraper/price_scraper.py   acessa a página e extrai o preço (Playwright)
 ├── services/price_service.py  calcula variação e decide o alerta
 ├── services/email_service.py  monta e envia o e-mail (SMTP)
@@ -166,7 +199,9 @@ app/
 ├── storage/excel_storage.py   alternativa em Excel (não usada por padrão, mantida como referência)
 └── utils/helpers.py     conversão de preço texto → número, formatação
 
-tests/test_price_service.py  testes da lógica de negócio
+products.json            lista de produtos monitorados
+scripts/send_test_email.py  envia um alerta fictício para testar o SMTP
+tests/                   testes da lógica de negócio e do carregador de produtos
 run.py                   ponto de entrada (python run.py)
 ```
 
@@ -224,7 +259,6 @@ Conceitos de Python praticados neste projeto:
 
 Não implementados nesta versão, mas possíveis evoluções:
 
-- Monitorar vários produtos ao mesmo tempo (lista de produtos configurável).
 - Dashboard web com gráfico da evolução do preço (consumindo os dados do Supabase).
 - Notificação por Telegram/WhatsApp além do e-mail.
 - Empacotar em Docker e rodar em um servidor.
