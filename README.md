@@ -1,11 +1,20 @@
-# Monitor de Preços — Python + Playwright + Supabase
+# Monitor de Preços
 
 [![tests](https://github.com/caduzinxz/price-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/caduzinxz/price-monitor/actions/workflows/tests.yml)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Monitora periodicamente o preço de produtos de e-commerce, guarda o histórico e
-envia alerta por **e-mail e Telegram** quando o preço cai de forma significativa
-ou atinge o menor valor já registrado.
+Automação em Python que acompanha o preço de produtos de e-commerce, guarda o
+histórico e avisa quando vale a pena comprar — por **e-mail**, **Telegram** ou
+no próprio terminal.
+
+Dispara alerta em duas situações: queda percentual acima do limite configurado,
+ou **menor preço já registrado** para aquele produto.
+
+**Stack:** Python 3.11+ · Playwright · SQLite / PostgreSQL (Supabase) · SMTP ·
+Telegram Bot API · GitHub Actions
+
+---
 
 ## Rodando em 1 minuto
 
@@ -20,7 +29,7 @@ python run.py --demo
 ```
 
 O modo `--demo` busca um preço real com Playwright, semeia um histórico e simula
-uma queda para você ver o alerta disparando — tudo em ~20 segundos:
+uma queda, para você ver o alerta disparando sem esperar dias:
 
 ```text
 [1/3] Buscando um preco REAL com o Playwright...
@@ -32,13 +41,16 @@ uma queda para você ver o alerta disparando — tudo em ~20 segundos:
       19:30 -> R$ 3.299,00
 
 [3/3] Nova verificacao encontra R$ 2.799,00...
+[Notebook Gamer (simulado)] Variacao: 15.16%
 [Notebook Gamer (simulado)] MENOR PRECO HISTORICO! Recorde anterior: R$ 3.299,00
+[Notebook Gamer (simulado)] Queda significativa. Enviando alertas...
 ================================================================
   MENOR PRECO HISTORICO: Notebook Gamer (simulado)
 ----------------------------------------------------------------
   Preco anterior : R$ 3.299,00
   Preco atual    : R$ 2.799,00
   Queda          : 15.16%
+  Recorde anterior: R$ 3.299,00
 ================================================================
 ```
 
@@ -47,94 +59,223 @@ Outros modos:
 ```bash
 python run.py --once    # uma verificação e encerra
 python run.py           # monitora de hora em hora (Ctrl+C para parar)
+python -m unittest discover tests    # 48 testes, < 1 segundo
 ```
 
-Por padrão o histórico vai para um SQLite local (`data/price_history.db`) e os
-alertas aparecem no terminal. E-mail, Telegram e Supabase são opcionais — cada
-um é ativado apenas se você configurar no `.env`.
+Nada é obrigatório: sem configuração, o histórico vai para um SQLite local e os
+alertas aparecem no terminal. E-mail, Telegram e Supabase são opcionais.
 
-## Instalação
+---
+
+## Como funciona
+
+```text
+                         ┌──────────────┐
+                         │ products.json│  lista de produtos
+                         └──────┬───────┘
+                                ▼
+   ┌────────────┐        ┌─────────────┐        ┌──────────────┐
+   │ PriceScraper│──────▶│   main.py   │◀──────▶│   Storage    │
+   │ (Playwright)│ preço  │ orquestração│ histórico│ SQLite/Supabase│
+   └────────────┘        └──────┬──────┘        └──────────────┘
+                                │
+                                ▼
+                         ┌─────────────┐
+                         │ PriceService│  calcula variação e
+                         │             │  decide se alerta
+                         └──────┬──────┘
+                                ▼
+                    ┌───────────────────────┐
+                    │  NotificationService  │
+                    └───┬───────┬───────┬───┘
+                        ▼       ▼       ▼
+                     E-mail  Telegram  Console
+```
+
+Cada ciclo, para cada produto: acessa a página → extrai e converte o preço →
+lê o histórico → calcula a variação → grava o novo registro → decide se alerta
+→ notifica pelos canais ativos → aguarda o intervalo → repete.
+
+---
+
+## Decisões de projeto
+
+As escolhas que definiram a forma do código:
+
+**Alerta de menor preço histórico, além da queda percentual.** Um preço que cai
+2% por dia durante uma semana nunca cruza o limite de 10% numa única
+verificação, mas termina no menor valor de todos os tempos. O alerta de queda
+enxerga o último salto; o de recorde enxerga o acumulado.
+
+**Comparação estrita (`<`) para o recorde.** Com `<=`, um preço parado no valor
+mínimo empataria consigo mesmo e geraria alerta a cada hora, para sempre. E a
+primeira verificação não conta como recorde — sem histórico, qualquer preço
+seria trivialmente "o menor de todos".
+
+**Erros isolados por produto e por canal.** O `try/except` fica dentro do laço:
+um site fora do ar não impede a verificação dos outros produtos, e um canal de
+notificação quebrado não impede os demais de entregarem o alerta.
+
+**Cada camada traduz suas falhas.** `StorageError`, `PriceScraperError` e
+`NotificationError` isolam o `main.py` de conhecer `postgrest`, `playwright` ou
+`smtplib`. Trocar qualquer uma dessas bibliotecas não afeta quem chama.
+
+**SQLite como padrão, Supabase como opção.** Os dois backends expõem os mesmos
+métodos e levantam o mesmo erro, então o resto do projeto não sabe qual está em
+uso. O padrão local é o que permite clonar e rodar sem criar conta em lugar
+nenhum.
+
+**Configuração separada por natureza.** Credenciais no `.env` (fora do Git);
+produtos no `products.json` (versionado). Arquivo que mistura segredo com
+não-segredo acaba sendo compartilhado por engano.
+
+**Sem dependências desnecessárias.** São três no total. O Telegram usa `urllib`
+da biblioteca padrão em vez de adicionar um cliente HTTP, e o SQLite vem no
+próprio Python.
+
+---
+
+## Testes
 
 ```bash
-python -m venv venv
+python -m unittest discover tests
 ```
 
-Ativar o ambiente virtual (PowerShell):
+48 testes rodando em menos de um segundo, porque nenhum acessa rede, navegador
+ou banco de verdade — as dependências externas são substituídas por dublês.
 
-```powershell
-venv\Scripts\Activate.ps1
-```
+| Arquivo | Cobre |
+|---|---|
+| `test_price_service.py` | cálculo de variação, regra de alerta, menor preço histórico |
+| `test_products.py` | validação do JSON: campos faltando, nomes duplicados, formato inválido |
+| `test_sqlite_storage.py` | gravação, leitura, persistência entre execuções |
+| `test_notification_service.py` | envio por múltiplos canais e isolamento de falhas |
+| `test_price_scraper.py` | conversão de preço e tratamento de formato inesperado |
+| `test_resilience.py` | o ciclo sobrevive a site fora do ar e a banco indisponível |
 
-Instalar as dependências:
+Rodam automaticamente a cada push, em Python 3.11 e 3.13, junto com o linter
+`ruff` — veja [.github/workflows/tests.yml](.github/workflows/tests.yml).
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+ruff check .
 ```
 
-Instalar os navegadores usados pelo Playwright (necessário apenas uma vez por máquina):
+---
 
-```bash
-playwright install chromium
+## Estrutura
+
+```text
+app/
+├── main.py                          orquestra o fluxo completo
+├── demo.py                          modo de demonstração (--demo)
+├── config/
+│   ├── settings.py                  configurações centralizadas (lê o .env)
+│   └── products.py                  carrega e valida a lista de produtos
+├── scraper/
+│   └── price_scraper.py             acessa a página e extrai o preço (Playwright)
+├── services/
+│   ├── price_service.py             calcula variação e decide o alerta
+│   ├── notification_service.py      envia por todos os canais ativos
+│   ├── email_service.py             e-mail via SMTP
+│   ├── telegram_service.py          Telegram Bot API
+│   └── console_service.py           terminal (canal de reserva)
+├── storage/
+│   ├── errors.py                    StorageError, compartilhado pelos backends
+│   ├── sqlite_storage.py            histórico em arquivo local (padrão)
+│   └── supabase_storage.py          histórico em Postgres na nuvem (opcional)
+└── utils/
+    └── helpers.py                   conversão "R$ 1.299,90" → 1299.90
+
+scripts/
+├── send_test_alert.py               alerta fictício por todos os canais
+└── get_telegram_chat_id.py          descobre o TELEGRAM_CHAT_ID
+
+products.json                        produtos monitorados
+tests/                               48 testes
+run.py                               ponto de entrada
 ```
+
+O scraper não conhece armazenamento nem e-mail; o `price_service` não conhece
+navegador; o `main.py` apenas chama as peças na ordem certa. Cada arquivo pode
+ser entendido, testado e substituído isoladamente.
+
+---
 
 ## Configuração
 
-Copie `.env.example` para `.env` e ajuste os valores:
+Tudo é opcional. Para personalizar, copie o exemplo:
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
-Variáveis:
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `STORAGE_BACKEND` | `sqlite` | `sqlite` (local) ou `supabase` (nuvem) |
+| `MIN_PRICE_DROP_PERCENT` | `10` | Queda mínima (%) para alertar |
+| `ALERT_ON_HISTORIC_LOW` | `true` | Alertar ao bater o menor preço histórico |
+| `CHECK_INTERVAL_HOURS` | `1` | Intervalo entre verificações |
+| `DELAY_BETWEEN_PRODUCTS_SECONDS` | `5` | Pausa entre produtos no mesmo ciclo |
+| `ALERTS_ENABLED` | `true` | `false` silencia os alertas sem apagar credenciais |
+| `EMAIL_*` | vazio | SMTP: host, porta, usuário, senha, destinatário |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | vazio | Bot do Telegram |
+| `SUPABASE_URL` / `SUPABASE_SECRET_KEY` | vazio | Necessários se usar Supabase |
 
-| Variável | Descrição |
-|---|---|
-| `STORAGE_BACKEND` | `sqlite` (padrão, local) ou `supabase` (nuvem) |
-| `MIN_PRICE_DROP_PERCENT` | Queda mínima (%) para disparar um alerta |
-| `ALERT_ON_HISTORIC_LOW` | `false` desliga o alerta de menor preço histórico |
-| `CHECK_INTERVAL_HOURS` | Intervalo entre verificações, em horas |
-| `DELAY_BETWEEN_PRODUCTS_SECONDS` | Pausa entre um produto e outro dentro do mesmo ciclo |
-| `ALERTS_ENABLED` | `false` desliga o envio de e-mails sem apagar as credenciais |
-| `EMAIL_HOST` / `EMAIL_PORT` | Servidor SMTP (ex.: `smtp.gmail.com` / `587`) |
-| `EMAIL_USER` / `EMAIL_PASSWORD` | Credenciais de envio |
-| `EMAIL_TO` | Destinatário do alerta |
-| `TELEGRAM_BOT_TOKEN` | Token do bot criado no @BotFather (opcional) |
-| `TELEGRAM_CHAT_ID` | Seu id de conversa no Telegram (opcional) |
-| `SUPABASE_URL` | Project URL do Supabase (Project Settings → API) |
-| `SUPABASE_SECRET_KEY` | Chave secreta do Supabase, usada pelo backend para ler/gravar o histórico |
-| `SUPABASE_PUBLISHABLE_KEY` | Chave pública do Supabase (não usada pelo monitor hoje; reservada para uma futura interface/dashboard) |
+### Produtos (`products.json`)
 
-### Quando um alerta é disparado
+Uma lista — acrescentar produtos é acrescentar blocos:
 
-Existem **duas** condições independentes — qualquer uma delas basta:
+```json
+[
+  {
+    "name": "A Light in the Attic",
+    "url": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+    "price_selector": "p.price_color"
+  }
+]
+```
 
-1. **Queda percentual**: o preço caiu pelo menos `MIN_PRICE_DROP_PERCENT` desde a
-   última verificação.
-2. **Menor preço histórico**: o preço ficou abaixo de tudo que já foi registrado
-   para aquele produto, mesmo que a queda desde a última verificação tenha sido
-   pequena.
+Os três campos são obrigatórios e o `name` precisa ser único — o histórico é
+guardado por nome, então repetir misturaria produtos diferentes. Erros no
+arquivo são detectados na inicialização, com mensagem explicando o que corrigir.
 
-A segunda existe porque um preço que cai de pouco em pouco — 2% por dia durante
-uma semana — nunca cruzaria o limite de 10% numa única verificação, mas acabaria
-no menor valor de todos os tempos sem você ficar sabendo.
+### Seletor de preço
 
-Duas decisões de implementação evitam alertas inúteis:
+Cada site organiza o HTML de um jeito diferente, então **não existe seletor
+universal**. Para descobrir o de um site: botão direito sobre o preço →
+"Inspecionar" → identifique uma classe estável → use em `price_selector`.
 
-- A primeira verificação de um produto **não** conta como recorde. Sem histórico,
-  qualquer preço seria trivialmente "o menor de todos".
-- Empatar com o recorde **não** conta como recorde novo (a comparação é `<`, não
-  `<=`). Caso contrário, um preço parado no valor mínimo geraria um alerta a cada
-  hora, indefinidamente.
+O exemplo aponta para [books.toscrape.com](https://books.toscrape.com), site
+feito para praticar scraping. Sites reais mudam de estrutura e podem bloquear
+automações — respeite os termos de uso e o `robots.txt`, e evite verificações
+frequentes demais (o padrão aqui é de 1 em 1 hora).
 
-### Armazenamento
+### E-mail (opcional)
 
-O padrão é **SQLite**: um arquivo em `data/price_history.db`, criado
-automaticamente. Não exige instalação nem configuração — é o que torna possível
-clonar e rodar.
+Para Gmail, use uma **App Password**, nunca a senha da conta:
 
-Para usar **Supabase** (Postgres na nuvem), coloque `STORAGE_BACKEND=supabase` no
-`.env`, preencha `SUPABASE_URL` e `SUPABASE_SECRET_KEY`, e crie a tabela rodando
-este SQL uma vez no **SQL Editor** do painel do Supabase:
+1. Ative a verificação em duas etapas.
+2. Gere uma senha em https://myaccount.google.com/apppasswords
+3. Use em `EMAIL_PASSWORD`, e preencha `EMAIL_USER` e `EMAIL_TO`.
+
+### Telegram (opcional)
+
+1. Envie `/newbot` para o **@BotFather** e cole o token em `TELEGRAM_BOT_TOKEN`.
+2. Mande qualquer mensagem para o seu bot — obrigatório, porque um bot só pode
+   escrever para quem falou com ele primeiro.
+3. Rode `python -m scripts.get_telegram_chat_id` e copie o número.
+
+Teste os canais configurados com:
+
+```bash
+python -m scripts.send_test_alert
+```
+
+### Supabase (opcional)
+
+Coloque `STORAGE_BACKEND=supabase` no `.env`, preencha as chaves e crie a tabela
+no **SQL Editor** do painel:
 
 ```sql
 create table if not exists price_history (
@@ -152,245 +293,44 @@ create index if not exists idx_price_history_produto
 alter table price_history enable row level security;
 ```
 
-A última linha ativa Row Level Security sem nenhuma política, o que bloqueia a
-chave pública de ler/escrever na tabela — só a chave secreta (usada do lado do
-servidor, nunca exposta) consegue acessar. Nunca coloque `SUPABASE_SECRET_KEY`
-em código versionado ou em qualquer lugar acessível pelo navegador.
+A última linha ativa Row Level Security sem políticas, bloqueando a chave
+pública — só a chave secreta, usada no servidor, acessa a tabela.
 
-Os dois backends expõem exatamente os mesmos métodos (`get_last_price`,
-`get_min_price`, `append_record`) e levantam o mesmo `StorageError`, então o
-restante do projeto não sabe qual está em uso.
+---
 
-### Produtos monitorados (`products.json`)
+## Conceitos aplicados
 
-Os produtos ficam em `products.json`, na raiz do projeto — e não no `.env`, que
-fica reservado a credenciais. O arquivo é uma lista, então monitorar vários
-produtos é só acrescentar blocos:
+- **POO e separação de responsabilidades**: cada classe encapsula um serviço
+  externo (navegador, banco, SMTP) e uma responsabilidade única.
+- **Polimorfismo**: `NotificationService` envia por qualquer objeto que tenha
+  `send_price_alert`, sem saber se é e-mail, Telegram ou console.
+- **Hierarquia de exceções**: `EmailServiceError` e `TelegramServiceError`
+  herdam de `NotificationError`, permitindo tratar qualquer canal num só
+  `except`.
+- **Dataclasses**: `PriceCheckResult` e `Product` agrupam dados com campos
+  explícitos.
+- **Injeção de dependência**: `check_product()` recebe scraper e storage por
+  parâmetro, o que permite substituí-los por dublês nos testes.
+- **Web scraping**: `wait_for_selector` espera o elemento de forma ativa (em vez
+  de `sleep` cego) e o navegador fecha em `finally`, mesmo com erro.
+- **Variáveis de ambiente**: `python-dotenv` carregado uma única vez; nenhuma
+  credencial no código.
+- **Logging estruturado** em vez de `print()`, configurado num único ponto.
+- **Encerramento limpo**: `KeyboardInterrupt` tratado para o Ctrl+C não deixar
+  o navegador aberto.
 
-```json
-[
-  {
-    "name": "A Light in the Attic",
-    "url": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
-    "price_selector": "p.price_color"
-  },
-  {
-    "name": "Outro produto",
-    "url": "https://loja.com/produto",
-    "price_selector": "span.preco-final"
-  }
-]
-```
-
-Regras:
-
-- os três campos (`name`, `url`, `price_selector`) são obrigatórios;
-- **`name` precisa ser único** — o histórico é guardado por nome, então nomes
-  repetidos misturariam os preços de produtos diferentes;
-- erros no arquivo (JSON inválido, campo faltando, nome repetido) são detectados
-  na inicialização, com mensagem explicando o que corrigir.
-
-Dentro de um ciclo, os produtos são verificados um de cada vez, com uma pausa
-entre eles (`DELAY_BETWEEN_PRODUCTS_SECONDS`) para não disparar várias
-requisições seguidas ao mesmo site. Se um produto falhar (site fora do ar, por
-exemplo), os demais continuam sendo verificados normalmente.
-
-### Sobre o `price_selector`
-
-Cada site organiza o HTML de um jeito diferente, então **não existe seletor
-universal**. O valor usado no exemplo (`p.price_color`) funciona no site de
-demonstração (`books.toscrape.com`, feito justamente para prática de scraping).
-Para monitorar um site real (Mercado Livre, Amazon etc.):
-
-1. Abra a página do produto no navegador.
-2. Clique com o botão direito sobre o preço → "Inspecionar".
-3. Identifique uma classe ou seletor CSS estável que aponte para o preço.
-4. Use-o no campo `price_selector` daquele produto em `products.json`.
-
-Sites reais mudam a estrutura com frequência e podem bloquear automações — respeite
-sempre os termos de uso e o `robots.txt` do site escolhido, e evite verificações
-muito frequentes (o padrão deste projeto é de 1 em 1 hora).
-
-### Sobre a senha de e-mail (Gmail)
-
-Nunca use a senha pessoal da sua conta Gmail no `.env`. Use uma **App Password**:
-
-1. Ative a verificação em duas etapas na conta Google.
-2. Acesse https://myaccount.google.com/apppasswords
-3. Gere uma senha de app e use-a em `EMAIL_PASSWORD`.
-
-Para testar o envio sem esperar uma queda real de preço:
-
-```bash
-python -m scripts.send_test_alert
-```
-
-### Notificação por Telegram
-
-O Telegram é opcional e independente do e-mail — você pode usar os dois, só um,
-ou nenhum. Um canal só é ativado se estiver totalmente configurado no `.env`.
-
-1. No Telegram, procure **@BotFather** e envie `/newbot`.
-2. Escolha um nome e um usuário para o bot. O BotFather devolve um **token** —
-   cole em `TELEGRAM_BOT_TOKEN` no `.env`.
-3. Abra a conversa com o **seu** bot e mande qualquer mensagem (ex.: "oi"). Esse
-   passo é obrigatório: por segurança, um bot só consegue enviar mensagens para
-   quem já falou com ele primeiro.
-4. Rode `python -m scripts.get_telegram_chat_id` e copie o número exibido para
-   `TELEGRAM_CHAT_ID`.
-5. Teste com `python -m scripts.send_test_alert`.
-
-O token dá controle total do bot para quem o tiver — trate como senha. Ele fica
-no `.env` (que está no `.gitignore`) e nunca aparece em logs, porque no Telegram
-o token faz parte da própria URL da API.
-
-Para **parar de receber os alertas**, prefira `ALERTS_ENABLED=false` no `.env` ou
-revogue apenas aquela App Password em https://myaccount.google.com/apppasswords —
-as duas opções são reversíveis e cirúrgicas. Desativar a verificação em duas
-etapas da conta Google também revoga a senha, mas enfraquece a segurança de toda
-a sua conta, então não é o caminho recomendado.
-
-## Execução
-
-```bash
-python run.py
-```
-
-O programa roda em loop até ser interrompido com `Ctrl+C` (que é tratado de
-forma limpa).
-
-## Funcionamento
-
-```text
-iniciar aplicação
-        ↓
-carregar configurações (.env via settings.py)
-        ↓
-abrir o navegador (Playwright) e acessar a URL do produto
-        ↓
-extrair e converter o preço (texto → número)
-        ↓
-ler o último preço salvo no Supabase
-        ↓
-calcular a variação percentual
-        ↓
-salvar o novo registro no Supabase (sem apagar o histórico)
-        ↓
-se a queda ≥ MIN_PRICE_DROP_PERCENT → enviar e-mail de alerta
-        ↓
-aguardar CHECK_INTERVAL_HOURS
-        ↓
-repetir
-```
-
-Uma falha em uma única etapa (ex.: site fora do ar numa verificação) é
-registrada no log e o programa segue para a próxima verificação — ele não
-trava por causa de um erro pontual.
-
-## Estrutura
-
-```text
-app/
-├── main.py              orquestra o fluxo completo
-├── config/settings.py   configurações centralizadas (lê o .env)
-├── config/products.py   carrega e valida a lista de produtos do JSON
-├── scraper/price_scraper.py   acessa a página e extrai o preço (Playwright)
-├── services/price_service.py  calcula variação e decide o alerta
-├── services/notification_service.py  envia o alerta por todos os canais ativos
-├── services/email_service.py  monta e envia o e-mail (SMTP)
-├── services/telegram_service.py  envia a mensagem pelo Telegram
-├── services/console_service.py  mostra o alerta no terminal (canal de reserva)
-├── storage/sqlite_storage.py   histórico em arquivo local (padrão)
-├── storage/supabase_storage.py   histórico no Supabase (opcional)
-├── demo.py              modo de demonstração (--demo)
-└── utils/helpers.py     conversão de preço texto → número, formatação
-
-products.json            lista de produtos monitorados
-scripts/send_test_alert.py  envia um alerta fictício por todos os canais
-scripts/get_telegram_chat_id.py  descobre o seu TELEGRAM_CHAT_ID
-tests/                   testes da lógica de negócio e do carregador de produtos
-run.py                   ponto de entrada (python run.py)
-```
-
-Cada módulo tem uma responsabilidade única: o scraper não sabe nada sobre
-armazenamento ou e-mail, o `price_service` não sabe nada sobre navegador, e o
-`main.py` apenas chama essas peças na ordem certa. Isso é o princípio de
-**separação de responsabilidades**: cada arquivo pode ser entendido, testado e
-trocado isoladamente — trocar `SupabaseStorage` por `ExcelStorage` (ou por
-qualquer outro backend) no `main.py` não exige mudar mais nada, porque os dois
-implementam os mesmos métodos (`get_last_price`, `append_record`).
-
-## Testes
-
-```bash
-python -m unittest discover tests
-```
-
-São 40 testes que rodam em menos de um segundo, porque nenhum deles acessa rede,
-navegador ou banco — as dependências externas são substituídas por dublês.
-Cobrem cálculo de variação, regra de alerta, menor preço histórico, conversão de
-preço, carregamento do JSON de produtos, envio por múltiplos canais e
-**resiliência** (o ciclo precisa sobreviver a um site fora do ar ou ao banco
-indisponível).
-
-Rodam automaticamente a cada push, em Python 3.11 e 3.13, junto com o linter
-(`ruff`) — veja [.github/workflows/tests.yml](.github/workflows/tests.yml).
-
-Para checar o estilo localmente:
-
-```bash
-pip install -r requirements-dev.txt
-ruff check .
-```
-
-## Aprendizado
-
-Conceitos de Python praticados neste projeto:
-
-- **Módulos e pacotes**: cada pasta com `__init__.py` é um pacote; `import
-  app.services.price_service` funciona porque `app`, `app.services` etc. são
-  pacotes Python.
-- **Classes e POO**: `PriceScraper`, `SupabaseStorage`, `PriceService` e
-  `EmailService` encapsulam estado (ex.: credenciais, configurações) e
-  comportamento relacionado.
-- **Dataclasses**: `PriceCheckResult` usa `@dataclass` para agrupar dados sem
-  escrever um `__init__` manual.
-- **Tratamento de exceções**: cada camada define sua própria exceção
-  (`PriceScraperError`, `EmailServiceError`) e o `main.py` decide o que fazer
-  com cada uma, sem precisar conhecer detalhes internos de Playwright ou SMTP.
-- **Variáveis de ambiente**: `python-dotenv` carrega o `.env` uma única vez em
-  `settings.py`; nenhuma credencial fica no código-fonte.
-- **Web scraping com Playwright**: `page.wait_for_selector` espera o elemento
-  aparecer de forma ativa (em vez de `time.sleep` cego), e o navegador é
-  sempre fechado num bloco `finally`, mesmo se algo der errado.
-- **Supabase (Postgres via REST)**: o cliente `supabase-py` fala com o banco
-  por HTTP (PostgREST) em vez de uma conexão SQL direta; `client.table(...).select()/insert()`
-  monta a query e `.execute()` a dispara.
-- **Exceções por camada**: cada camada traduz as falhas das suas dependências
-  para uma exceção própria (`StorageError`, `PriceScraperError`,
-  `NotificationError`). O `main.py` trata essas três e nunca precisa conhecer
-  `postgrest`, `playwright` ou `smtplib` — trocar qualquer uma dessas
-  bibliotecas não afeta quem chama.
-- **Testes com dublês**: as classes `FakeScraper`/`FakeStorage` substituem
-  serviços reais nos testes, permitindo simular um banco fora do ar sem
-  derrubar banco nenhum.
-- **SMTP**: `smtplib` + `email.message.EmailMessage` (bibliotecas padrão) para
-  montar e enviar e-mails com STARTTLS.
-- **Logging**: módulo `logging` em vez de `print()`, com timestamp e níveis
-  (`info`, `error`), configurado uma única vez em `main.py`.
-- **Agendamento simples**: `time.sleep(horas * 3600)` dentro de um `while
-  True`, encerrado de forma limpa ao capturar `KeyboardInterrupt`.
-- **Separação de responsabilidades**: cada módulo faz uma coisa só, o que
-  facilita testar, entender e trocar peças (ex.: outro site, outro banco de
-  dados) sem reescrever o projeto inteiro.
+---
 
 ## Próximos passos
 
-Não implementados nesta versão, mas possíveis evoluções:
-
-- Dashboard web com gráfico da evolução do preço (consumindo os dados do Supabase).
+- Dashboard web com gráfico da evolução dos preços.
+- Empacotar em Docker e agendar num servidor (hoje depende do terminal aberto).
+- Reaproveitar uma única instância do navegador entre produtos do mesmo ciclo.
+- API para consultar o histórico.
 - Notificação por WhatsApp (exige WhatsApp Business API e template aprovado).
-- Empacotar em Docker e rodar em um servidor.
-- Expor uma API para consultar o histórico.
-- Interface web para cadastrar produtos e visualizar alertas.
-- Deploy em nuvem (ex.: um cron job em uma VM ou função serverless).
+
+---
+
+## Licença
+
+[MIT](LICENSE)
